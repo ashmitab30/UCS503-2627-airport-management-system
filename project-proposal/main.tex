@@ -1,0 +1,319 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+% -----------------------------------------------------
+% bvraghav-tiet-ucs503p-article.sty
+% -----------------------------------------------------
+
+% Variable: Lab Instructor
+\makeatletter \newcommand{\BvrSetLabInstructor}[1]{%
+  \gdef\Bvr@LabInstructor{#1}}
+% default
+\newcommand{\Bvr@LabInstructor}{Dr. Raghav %
+  B. Venkataramaiyer}
+% public accessor
+\newcommand{\BvrLabInstructorValue}{\Bvr@LabInstructor}
+\makeatother
+
+% Add subtitle
+\usepackage{titling}
+% -- Set title bold
+\pretitle{\begin{center}\bfseries\fontsize{18bp}{18bp}\selectfont}
+\makeatletter
+\newcommand{\BvrSubtitle}[1]{%
+  \posttitle{%
+    \par\end{center}
+    \begin{center}\large#1\end{center}
+    \vskip 0.5em}%
+}
+\makeatother
+
+% Hints in the section title(s)
+\newcommand{\BvrHint}[1]{%
+  {\normalfont\normalsize\itshape\hfill #1}}
+
+% -----------------------------------------------------
+
+\title{Airport Management System}
+
+\BvrSetLabInstructor{Dr. Raghav B. Venkataramaiyer}
+
+\BvrSubtitle{%
+  Project Proposal for UCS503P  \\
+  Submitted to: \BvrLabInstructorValue \\ \bfseries
+  Thapar Institute of Engineering and Technology%
+}
+
+\author{
+  TODO Name, CSED%
+  \thanks{Roll No: \texttt{10xxxxxxxx}, %
+    Email: \texttt{TODO\@thapar.edu}}
+}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Higher-order goal%
+  \BvrHint{\ldots secondary framing}}
+This project aims to demonstrate that a single, well-designed
+operational data layer -- shared across every subsystem of an airport
+-- can support a wide range of day-to-day airport functions (flight
+operations, passenger-facing services, staff management, security,
+and facilities) without each subsystem owning a private data silo.
+The immediate engineering objective is to translate this architectural
+claim into a deployable, multi-module web platform.
+
+\section{Time-to-value %
+\BvrHint{\ldots primary heuristic}}
+\begin{itemize}[leftmargin=0.7cm]
+    \item We will deliver a live, working skeleton (database + API +
+      frontend health check) before any feature work begins, so every
+      subsequent module ships against a real, deployed system.
+    \item Modules are explicitly tiered: \textbf{Tier 1} modules
+      (concurrency, cascading updates, real-time state, prediction)
+      are built first for engineering depth; \textbf{Tier 2} modules
+      (CRUD + status pipelines) follow once the core patterns are
+      proven, so complexity is front-loaded by design rather than
+      discovered under deadline pressure.
+    \item Success in each weekly iteration is defined by what is
+      deployed and demonstrable that week, not by a big-bang release
+      at the end.
+\end{itemize}
+
+\section{Problem Statement}
+Airports run many operationally distinct but data-coupled functions
+-- flight scheduling, gate assignment, baggage handling, passenger
+booking, staff rostering, security screening, parking, and facilities
+-- that in practice are often built as separate systems stitched
+together after the fact. This causes:
+\begin{itemize}[leftmargin=0.7cm]
+    \item \textbf{Data duplication and drift:} the same flight, gate,
+      or passenger record is re-entered or re-synced across systems,
+      creating inconsistency.
+    \item \textbf{Delayed cascades:} a single flight delay should
+      ripple through gate reassignment, connecting-flight risk,
+      staff scheduling, and passenger notifications -- but siloed
+      systems propagate this slowly or not at all.
+    \item \textbf{Concurrency hazards:} shift scheduling, resource
+      assignment, and parking-slot booking are all instances of the
+      same conflict-detection problem, usually re-solved (and
+      re-bugged) independently in each silo.
+    \item \textbf{Fragmented staff tooling:} ground crew, security,
+      medical, and admin staff each need role-specific views into the
+      same underlying operational state.
+\end{itemize}
+
+\textbf{Why this matters now (contextual relevance):} even a
+teaching-scale airport platform surfaces the same architectural
+pressure real systems face -- one shared operational core, read and
+written by many role-specific modules, is what actually prevents the
+inconsistency and cascade-delay problems above.
+
+\section{Proposed Solution %
+\BvrHint{\ldots Software Proposition}}
+\subsection{Overview}
+Build a \textbf{web-based} Airport Management System around one
+shared operational core (\texttt{Airport}, \texttt{Gate},
+\texttt{Flight}, \texttt{Passenger}, \texttt{Resource}, \texttt{User}),
+with the following module groups on top of it:
+\begin{itemize}[leftmargin=0.7cm]
+    \item \textbf{Ops Core:} flights, gates, resources, turnaround,
+      and delay handling with cascading recalculation.
+    \item \textbf{Passenger-facing:} booking portal, check-in,
+      connecting-flight risk, baggage tracking, accessibility \&
+      medical assistance requests, a support chatbot, parking, and
+      a facilities directory.
+    \item \textbf{Operations \& safety:} emergency handling, security
+      checkpoints/screening/incidents, predictive analytics for delay
+      and congestion.
+    \item \textbf{Staff:} Staff \& Employee Management -- records,
+      shift scheduling with conflict prevention, and attendance.
+    \item \textbf{Admin Dashboard:} rolls up all of the above.
+\end{itemize}
+
+\subsection{Core workflow}
+\begin{enumerate}[leftmargin=0.7cm]
+    \item Ops staff maintain flights, gates, and resources against the
+      shared core; a delay on any flight triggers cascading updates
+      to dependent gate/resource/connecting-flight state.
+    \item Passengers interact with the same core through booking,
+      check-in, baggage status, and the chatbot -- all reading live
+      operational data rather than a stale copy.
+    \item Staff are scheduled onto shifts through a single
+      conflict-checking service; the same pattern is reused for
+      resource assignment and parking-slot booking.
+    \item The Admin Dashboard aggregates status and metrics across
+      every module from the shared core.
+\end{enumerate}
+
+\subsection{Operational constraints for an educational setting}
+\begin{itemize}[leftmargin=0.7cm]
+    \item Role-based access (passenger, ground\_crew, security,
+      medical, ops\_manager, admin) enforced uniformly via JWT
+      middleware rather than per-module ad hoc checks.
+    \item Avoid dependence on external/paid services where a mock or
+      rule-based substitute suffices (e.g.\ mock payments, rule-based
+      chatbot over live DB data) -- focus stays on workflow and system
+      correctness.
+    \item Design for deployability using common web hosting and a
+      managed Postgres instance.
+\end{itemize}
+
+\section{Solution Approach %
+\BvrHint{\ldots Engineering focus}}
+This is an engineering course project, so the focus is on the shared
+data layer, correctness of concurrent operations, and workflow --
+not on research-grade algorithms.
+
+\subsection{Conflict detection %
+\BvrHint{\ldots reused pattern, not novel research}}
+Shift scheduling, resource assignment, and parking-slot booking all
+reduce to the same overlap-detection problem over time ranges:
+\begin{itemize}[leftmargin=0.7cm]
+    \item A single, unit-tested conflict-checking service
+      (\texttt{shiftConflict.js}) is written once against shifts and
+      reused as-is for resource assignment and parking.
+    \item On conflict, the API returns \texttt{409} with the
+      conflicting rows so the caller (staff UI) can resolve it, rather
+      than silently overwriting or rejecting without explanation.
+\end{itemize}
+
+\subsection{Web architecture %
+\BvrHint{\ldots web-based solution}}
+A standard 3-tier web architecture:
+\begin{itemize}[leftmargin=0.7cm]
+    \item \textbf{Frontend:} React (Vite), role-aware views for
+      passengers, staff, and admins.
+    \item \textbf{Backend API:} Node.js + Express, JWT auth,
+      Socket.IO for real-time updates (delays, gate changes).
+    \item \textbf{Database:} PostgreSQL, one schema covering all
+      15 modules' entities against the shared operational core.
+\end{itemize}
+
+\subsection{Testing and delivery}
+\begin{itemize}[leftmargin=0.7cm]
+    \item Jest (backend) for unit tests on pure logic (e.g.\ conflict
+      detection) that don't require a live database; React Testing
+      Library planned for frontend component tests.
+    \item Each week's module ships against the already-deployed
+      skeleton, so the live system is always in a demonstrable state.
+\end{itemize}
+
+\section{Evaluation Criterion %
+\BvrHint{\ldots measurable and attributable}}
+
+\subsection{Primary evaluation metric}
+\textbf{Correctness of shared-core consistency:} whether a state
+change in one module (e.g.\ a flight delay) is correctly and promptly
+reflected in every dependent module (gate status, connecting-flight
+risk, passenger notification) without manual re-entry.
+\begin{itemize}[leftmargin=0.7cm]
+    \item Target: cascading updates visible across dependent modules
+      within the same request/socket cycle that recorded the delay.
+    \item Attribution: verified via integration tests and manual
+      cross-module checks during weekly demos.
+\end{itemize}
+
+\subsection{Secondary evaluation metrics}
+\begin{itemize}[leftmargin=0.7cm]
+    \item \textbf{Conflict-detection correctness:} unit-test coverage
+      of the shared overlap-checking service across shifts, resource
+      assignment, and parking.
+    \item \textbf{API health:} \texttt{/health} reports
+      \texttt{db.connected: true} in every deployed environment.
+    \item \textbf{Role isolation:} each protected route enforces the
+      correct role set, verified by auth middleware tests.
+    \item \textbf{Weekly deployability:} each week's increment builds
+      and deploys without breaking the previous week's live system.
+\end{itemize}
+
+\section{Scalability %
+\BvrHint{\ldots with foresight}}
+\begin{enumerate}[leftmargin=0.7cm]
+    \item \textbf{Scalable (theoretically):} decoupled frontend/backend,
+      stateless JWT-authenticated API, indexed queries on the shared
+      core tables, and a conflict-checking service designed to be
+      reused (not re-implemented) by every module that needs it.
+    \item \textbf{Operationally deployable (practically):} managed
+      Postgres, platform-hosted backend (Render/Railway) and frontend
+      (Vercel), configuration entirely via environment variables.
+\end{enumerate}
+
+\section{Engine availability heuristic}
+\begin{itemize}[leftmargin=0.7cm]
+    \item Web framework (Express) for REST APIs and Socket.IO for
+      real-time push.
+    \item Managed relational database (Postgres via
+      Render/Neon/Supabase).
+    \item Token-based authentication (JWT) with role middleware.
+    \item Test framework (Jest / React Testing Library).
+    \item Platform-hosted CD targets (Render/Railway, Vercel) instead
+      of self-managed infrastructure.
+\end{itemize}
+These mature components let the project focus on the shared data
+model, cascading/conflict logic, and role-based workflow rather than
+infrastructure.
+
+\section{Project scope and deliverables %
+\BvrHint{\ldots iteration-friendly}}
+\subsection{Delivered so far %
+\BvrHint{\ldots Weeks 1--2}}
+\begin{itemize}[leftmargin=0.7cm]
+    \item Week 1: finalized scope and tiering across 15 modules, full
+      ERD, complete Postgres schema, backend/frontend skeleton with a
+      live \texttt{/health} check.
+    \item Week 2: JWT auth (register/login/me), Staff \& Employee
+      Management (records, shift scheduling with conflict rejection,
+      unit tested), attendance clock-in/out, role-aware frontend
+      dashboard.
+\end{itemize}
+
+\subsection{Subsequent deliverables}
+\begin{itemize}[leftmargin=0.7cm]
+    \item Ops Core (flights, gates, resources, turnaround) and delay
+      handling with cascading recalculation.
+    \item Booking portal, connecting-flight risk, baggage management,
+      check-in.
+    \item Emergency handling, security module, predictive analytics,
+      support chatbot.
+    \item Parking, facilities directory, accessibility \& medical
+      assistance.
+    \item Admin dashboard rolling up all modules.
+\end{itemize}
+
+\section{Risks and mitigations}
+\begin{itemize}[leftmargin=0.7cm]
+    \item \textbf{Shared-core coupling risk:} a bug in the core schema
+      affects every module; mitigated by finalizing the ERD and schema
+      in Week 1, before feature work, and unit-testing shared services
+      like conflict detection.
+    \item \textbf{Scope size (15 modules):} mitigated by the explicit
+      Tier 1/Tier 2 split, so depth is spent where it matters and the
+      remainder is deliberately kept simple.
+    \item \textbf{Real-time correctness:} cascading updates (delays,
+      gate changes) are harder to get right than simple CRUD;
+      mitigated by building this pattern early (Ops Core, Tier 1) and
+      reusing the same conflict-service pattern established in Week 2.
+    \item \textbf{Deployment drift:} mitigated by deploying the
+      skeleton in Week 1 and shipping every subsequent module against
+      that same live environment.
+\end{itemize}
+
+\section{Summary}
+This project proposes a deployable, multi-module Airport Management
+System built on one shared operational data layer, demonstrating that
+a well-designed core prevents the data duplication and cascade-delay
+problems that fragmented airport systems typically suffer from. It
+meets the course criteria by shipping a deployed skeleton in Week 1,
+tiering module complexity deliberately, reusing a single unit-tested
+conflict-detection pattern across multiple modules, and defining
+cross-module consistency as the primary, attributable evaluation
+metric.
+
+\end{document}
