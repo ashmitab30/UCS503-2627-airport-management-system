@@ -29,21 +29,19 @@ export default function Register() {
   return (
     <div style={styles.authShell}>
       <div style={styles.authLeft}>
-        <div style={styles.authLogoRow}>
-          <div style={styles.authLogoBadge}>AM</div>
-          <div>
-            <div style={styles.authBrand}>Airport Ops</div>
-            <div style={styles.authBrandSub}>OPERATIONS PLATFORM</div>
+        <div className="map-dots" />
+        <div style={{ position: 'relative', zIndex: 2 }}>
+          <div style={styles.authLogoRow}>
+            <div style={styles.authLogoBadge}>✈️</div>
+            <div>
+              <div style={styles.authBrand}>Meridian Ops</div>
+              <div style={styles.authBrandSub}>OPERATIONS PLATFORM</div>
+            </div>
           </div>
-        </div>
 
-        <h1 style={styles.authHeadline}>
-          Book, track, and manage your flight in one place.
-        </h1>
-
-        <div style={styles.authFootRow}>
-          <span>Passenger accounts</span>
-          <span>Week 3 build</span>
+          <h1 style={styles.authHeadline}>
+            Book, track, and manage your flight in one place.
+          </h1>
         </div>
       </div>
 

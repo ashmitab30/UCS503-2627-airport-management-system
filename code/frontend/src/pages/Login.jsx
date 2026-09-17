@@ -28,19 +28,20 @@ export default function Login() {
   return (
     <div style={styles.authShell}>
       <div style={styles.authLeft}>
-        <div style={styles.authLogoRow}>
-          <div style={styles.authLogoBadge}>AM</div>
-          <div>
-            <div style={styles.authBrand}>Airport Ops</div>
-            <div style={styles.authBrandSub}>OPERATIONS PLATFORM</div>
+        <div className="map-dots" />
+        <div style={{ position: 'relative', zIndex: 2 }}>
+          <div style={styles.authLogoRow}>
+            <div style={styles.authLogoBadge}>✈️</div>
+            <div>
+              <div style={styles.authBrand}>Meridian Ops</div>
+              <div style={styles.authBrandSub}>OPERATIONS PLATFORM</div>
+            </div>
           </div>
+
+          <h1 style={styles.authHeadline}>
+            One system for gates, flights, and ground crew.
+          </h1>
         </div>
-
-        <h1 style={styles.authHeadline}>
-          One system for gates, flights, and ground crew.
-        </h1>
-
-        
       </div>
 
       <div style={styles.authRight}>

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../api/client.js';
-import { styles, colors } from '../styles.js';
+import { styles, colors, statusBadgeStyle } from '../styles.js';
+import SiteHeader from './SiteHeader.jsx';
 
 const PIPELINE_STEPS = ['requested', 'assigned', 'in_progress', 'completed'];
 const PIPELINE_LABELS = { requested: 'Submitted', assigned: 'Assigned', in_progress: 'In progress', completed: 'Completed' };
@@ -20,6 +21,7 @@ export default function MyFlights() {
 
   return (
     <div>
+      <SiteHeader />
       <div className="book-hero" style={{ paddingBottom: '60px' }}>
         <div className="map-dots" />
         <div className="book-hero-inner">
@@ -29,10 +31,9 @@ export default function MyFlights() {
       </div>
 
       <main style={styles.bookingWrap}>
-        <nav style={{ ...styles.nav, border: 'none', marginBottom: '1.2rem' }}>
-          <Link to="/dashboard" style={{ fontSize: '0.85rem', color: colors.accent }}>&larr; Back to dashboard</Link>
-          <Link to="/book" style={styles.buttonSecondary}>Book a flight</Link>
-        </nav>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.2rem' }}>
+          <Link to="/book" style={{ ...styles.buttonSecondary, textDecoration: 'none' }}>+ Book a flight</Link>
+        </div>
 
         {error && <p style={styles.error}>{error}</p>}
         {!error && bookings === null && <p style={styles.muted}>Loading…</p>}
@@ -47,7 +48,7 @@ export default function MyFlights() {
             <div style={{ padding: '1.1rem 1.3rem 0.9rem' }}>
               <div style={styles.flightCardTop}>
                 <strong>{b.flight_number}</strong>
-                <span style={styles.badge}>{b.flight_status}</span>
+                <span style={statusBadgeStyle(b.flight_status)}>{b.flight_status}</span>
               </div>
               <div style={styles.routeLine}>
                 <div>

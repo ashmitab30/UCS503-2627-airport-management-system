@@ -15,6 +15,8 @@ export const colors = {
   accentSoft: '#EAEFFF',
   success: '#15803D',
   successSoft: '#EAF7EE',
+  warn: '#B4740E',
+  warnSoft: '#FBF0DD',
   danger: '#B91C1C',
   dangerSoft: '#FDECEC',
 };
@@ -109,6 +111,10 @@ export const styles = {
     display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: 999,
     fontSize: '0.72rem', fontWeight: 600, background: colors.accentSoft, color: colors.accentDark,
   },
+  badgeGood: { display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: colors.successSoft, color: colors.success },
+  badgeWarn: { display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: colors.warnSoft, color: colors.warn },
+  badgeBad: { display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: colors.dangerSoft, color: colors.danger },
+  badgeNeutral: { display: 'inline-block', padding: '0.2rem 0.6rem', borderRadius: 999, fontSize: '0.72rem', fontWeight: 600, background: colors.surfaceAlt, color: colors.slate },
   muted: { color: colors.muted, fontSize: '0.85rem' },
 
   // ---- split auth screen (Login / Register) ----
@@ -120,7 +126,7 @@ export const styles = {
     background: colors.surface,
   },
   authLeft: {
-    background: `linear-gradient(160deg, ${colors.navy} 0%, ${colors.navyPanel} 100%)`,
+    background: `linear-gradient(155deg, #081F4D 0%, #0E3B8C 42%, #2E7CF6 78%, #6FB1FF 100%)`,
     color: '#fff',
     padding: '3rem',
     display: 'flex',
@@ -202,3 +208,18 @@ export const styles = {
   pipelineStepCurrent: { color: colors.accentDark },
   pipelineStepPending: { color: colors.muted },
 };
+
+// Maps a status string to the right semantic badge style, so every table
+// and card across the app colors "delayed"/"cancelled"/"confirmed" etc.
+// consistently instead of every component inventing its own mapping.
+const GOOD_STATUSES = ['on_time', 'on time', 'confirmed', 'active', 'completed', 'boarding', 'resolved', 'available', 'success'];
+const WARN_STATUSES = ['delayed', 'in_progress', 'in progress', 'assigned', 'pending', 'requested', 'on_leave', 'maintenance'];
+const BAD_STATUSES = ['cancelled', 'canceled', 'critical', 'diverted', 'active_emergency'];
+
+export function statusBadgeStyle(status) {
+  const s = (status || '').toLowerCase().replace(/_/g, ' ');
+  if (GOOD_STATUSES.some((g) => s === g.replace(/_/g, ' '))) return styles.badgeGood;
+  if (WARN_STATUSES.some((w) => s === w.replace(/_/g, ' '))) return styles.badgeWarn;
+  if (BAD_STATUSES.some((b) => s === b.replace(/_/g, ' '))) return styles.badgeBad;
+  return styles.badgeNeutral;
+}

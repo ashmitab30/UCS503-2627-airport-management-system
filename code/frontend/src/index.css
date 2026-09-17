@@ -25,7 +25,7 @@ input:focus, select:focus, button:focus {
     radial-gradient(circle at 12% 15%, rgba(255,255,255,.10) 0%, transparent 40%),
     linear-gradient(155deg,#081F4D 0%,#0E3B8C 42%,#2E7CF6 78%,#6FB1FF 100%);
 }
-.book-hero .map-dots {
+.book-hero .map-dots, .map-dots {
   position: absolute; inset: 0; opacity: .15; pointer-events: none;
   background-image: radial-gradient(circle,#fff 1px,transparent 1.4px);
   background-size: 18px 18px;
@@ -107,7 +107,29 @@ input:focus, select:focus, button:focus {
 .admin-nav-card {
   display: block; background: #fff; border: 1px solid #E3E8F0; border-radius: 14px;
   padding: 20px; text-decoration: none; color: inherit; box-shadow: 0 1px 2px rgba(15,23,42,.05);
+  position: relative; overflow: hidden; transition: box-shadow .15s, transform .15s;
 }
-.admin-nav-card:hover { border-color: #2E7CF6; }
+.admin-nav-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent-bar, #2F5CF5);
+}
+.admin-nav-card:hover { border-color: #2E7CF6; box-shadow: 0 6px 16px rgba(15,23,42,.08); transform: translateY(-1px); }
+.admin-nav-card .icon { font-size: 20px; margin-bottom: 10px; display: block; }
 .admin-nav-card h3 { margin: 0 0 6px; font-size: 15px; color: #0F172A; }
 .admin-nav-card p { margin: 0; font-size: 12.5px; color: #57647D; }
+
+/* ---- passenger site header ---- */
+.site-header {
+  display: flex; align-items: center; justify-content: space-between; padding: 14px 28px;
+  position: sticky; top: 0; z-index: 30; background: rgba(255,255,255,.92); backdrop-filter: blur(10px);
+  border-bottom: 1px solid #E3E8F0;
+}
+.site-header .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 14px; color: #0F172A; text-decoration: none; }
+.site-header .brand .mark {
+  width: 30px; height: 30px; border-radius: 8px; background: #2F5CF5; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+}
+.site-nav { display: flex; align-items: center; gap: 24px; }
+.site-nav a { font-size: 13px; font-weight: 600; color: #57647D; text-decoration: none; padding: 4px 0; border-bottom: 2px solid transparent; }
+.site-nav a:hover { color: #0F172A; }
+.site-nav a.active { color: #2247D6; border-bottom-color: #2F5CF5; }
+.site-header-right { display: flex; align-items: center; gap: 12px; }

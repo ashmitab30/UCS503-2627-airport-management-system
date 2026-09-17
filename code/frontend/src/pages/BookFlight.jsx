@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import SiteHeader from './SiteHeader.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../api/client.js';
-import { styles, colors } from '../styles.js';
+import { styles, colors, statusBadgeStyle } from '../styles.js';
 
 const ASSISTANCE_OPTIONS = [
   { value: '', label: 'No assistance needed' },
@@ -92,6 +93,7 @@ export default function BookFlight() {
 
   return (
     <div>
+      <SiteHeader />
       <div className="book-hero">
         <div className="map-dots" />
         <div className="book-hero-inner">
@@ -123,9 +125,6 @@ export default function BookFlight() {
       )}
 
       <main style={styles.bookingWrap}>
-        <nav style={{ ...styles.nav, border: 'none', marginBottom: '1rem' }}>
-          <Link to="/dashboard" style={{ fontSize: '0.85rem', color: colors.accent }}>&larr; Back to dashboard</Link>
-        </nav>
         {error && <p style={styles.error}>{error}</p>}
 
         {step === 'results' && (
@@ -138,7 +137,7 @@ export default function BookFlight() {
                   <div style={{ padding: '1.1rem 1.3rem 0.9rem' }}>
                     <div style={styles.flightCardTop}>
                       <strong>{f.flight_number}</strong>
-                      <span style={styles.badge}>{f.status}</span>
+                      <span style={statusBadgeStyle(f.status)}>{f.status}</span>
                     </div>
                     <div style={styles.routeLine}>
                       <div>

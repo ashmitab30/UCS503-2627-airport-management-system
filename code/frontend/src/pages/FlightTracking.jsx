@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../api/client.js';
 import { styles, colors } from '../styles.js';
+import SiteHeader from './SiteHeader.jsx';
 
 export default function FlightTracking() {
   const { flightId } = useParams();
@@ -26,13 +27,13 @@ export default function FlightTracking() {
   }, [flightId, token]);
 
   return (
-    <main style={styles.bookingWrap}>
-      <nav style={{ ...styles.nav, border: 'none', marginBottom: '1.2rem' }}>
-        <Link to="/my-flights" style={{ fontSize: '0.85rem', color: colors.accent }}>&larr; Back</Link>
-      </nav>
-      <h1 style={styles.title}>Live flight tracking</h1>
-      {error && <p style={styles.error}>{error}</p>}
-      {!error && !data && <p style={styles.muted}>Loading…</p>}
+    <div>
+      <SiteHeader />
+      <main style={styles.bookingWrap}>
+        <Link to="/my-flights" style={{ fontSize: '0.85rem', color: colors.accent, display: 'inline-block', marginBottom: '1rem' }}>&larr; Back to my flights</Link>
+        <h1 style={styles.title}>Live flight tracking</h1>
+        {error && <p style={styles.error}>{error}</p>}
+        {!error && !data && <p style={styles.muted}>Loading…</p>}
 
       {data && (
         <>
@@ -96,7 +97,8 @@ export default function FlightTracking() {
           </p>
         </>
       )}
-    </main>
+      </main>
+    </div>
   );
 }
 

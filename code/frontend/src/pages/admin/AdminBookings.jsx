@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { apiFetch } from '../../api/client.js';
-import { styles, colors } from '../../styles.js';
+import { styles, colors, statusBadgeStyle } from '../../styles.js';
 
 export default function AdminBookings() {
   const { token } = useAuth();
@@ -41,7 +41,7 @@ export default function AdminBookings() {
                   <td style={{ padding: '0.5rem' }}>{b.flight_number}</td>
                   <td style={{ padding: '0.5rem' }}>{b.origin_code} → {b.dest_code}</td>
                   <td style={{ padding: '0.5rem' }}>{b.seat_number || '—'}</td>
-                  <td style={{ padding: '0.5rem' }}><span style={styles.badge}>{b.status}</span></td>
+                  <td style={{ padding: '0.5rem' }}><span style={statusBadgeStyle(b.status)}>{b.status}</span></td>
                   <td style={{ padding: '0.5rem' }}>
                     {b.assistance_type ? `${b.assistance_type.replace('_', ' ')} (${b.assistance_status})` : '—'}
                   </td>
