@@ -1,10 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../api/client.js';
 import { styles } from '../styles.js';
-import OpsCore, { TurnaroundBoard } from './OpsCore.jsx';
+import { TurnaroundBoard } from './OpsCore.jsx';
+import AssistanceQueue from './AssistanceQueue.jsx';
+import EmergencyBoard from './EmergencyBoard.jsx';
 
 const STAFF_ROLES = ['ground_crew', 'security', 'medical', 'ops_manager', 'admin'];
+const ASSISTANCE_STAFF_ROLES = ['ground_crew', 'medical', 'ops_manager', 'admin'];
 
 export default function Dashboard() {
   const { user, token, logout } = useAuth();
@@ -21,27 +25,40 @@ export default function Dashboard() {
 
       {user.role === 'passenger' && (
         <div style={styles.card}>
-          <h2 style={styles.cardTitle}>Welcome</h2>
+          <h2 style={styles.cardTitle}>Welcome, {user.name}</h2>
+          <p style={styles.muted}>Search and book flights, then track your bookings and any assistance requests here.</p>
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+            <Link to="/book" style={styles.button}>Book a flight</Link>
+            <Link to="/my-flights" style={styles.buttonSecondary}>My flights</Link>
+          </div>
+        </div>
+      )}
+
+      {(user.role === 'admin' || user.role === 'ops_manager') && (
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>Admin area</h2>
           <p style={styles.muted}>
-            Booking, check-in and baggage tracking land in Week 4+. For now this
-            confirms your account and login are working end to end.
+            Flights, employees, shifts, resources, emergencies, assistance requests, bookings and
+            passengers each now have their own dedicated page.
           </p>
+          <Link to="/admin" style={styles.button}>Go to admin dashboard &rarr;</Link>
         </div>
       )}
 
       {STAFF_ROLES.includes(user.role) && <MyShifts token={token} />}
 
+      {/* Admin/ops_manager get Emergencies + Assistance via the dedicated
+          /admin pages now — only shown inline here for staff who don't
+          have access to that area. */}
+      {STAFF_ROLES.includes(user.role) && !['admin', 'ops_manager'].includes(user.role) && (
+        <EmergencyBoard token={token} />
+      )}
+
+      {ASSISTANCE_STAFF_ROLES.includes(user.role) && !['admin', 'ops_manager'].includes(user.role) && (
+        <AssistanceQueue token={token} />
+      )}
+
       {user.role === 'ground_crew' && <TurnaroundBoard token={token} />}
-
-      {(user.role === 'admin' || user.role === 'ops_manager') && (
-        <ShiftScheduler token={token} isAdmin={user.role === 'admin'} />
-      )}
-
-      {user.role === 'admin' && <StaffManagement token={token} />}
-
-      {(user.role === 'admin' || user.role === 'ops_manager') && (
-        <OpsCore token={token} isAdmin={user.role === 'admin'} />
-      )}
     </main>
   );
 }
@@ -155,7 +172,7 @@ function MyShifts({ token }) {
 // ---------------------------------------------------------------------
 // Admin + ops_manager: schedule shifts, see the conflict check live
 // ---------------------------------------------------------------------
-function ShiftScheduler({ token }) {
+export function ShiftScheduler({ token }) {
   const [employees, setEmployees] = useState([]);
   const [form, setForm] = useState({ employee_id: '', start_time: '', end_time: '', area_assigned: '' });
   const [error, setError] = useState(null);
@@ -271,7 +288,7 @@ function ShiftScheduler({ token }) {
 // ---------------------------------------------------------------------
 // Admin only: create staff accounts, view roster
 // ---------------------------------------------------------------------
-function StaffManagement({ token }) {
+export function StaffManagement({ token }) {
   const [employees, setEmployees] = useState([]);
   const [form, setForm] = useState({
     name: '', email: '', role: 'ground_crew', department: '', role_title: '', certification: '',
@@ -345,14 +362,14 @@ function StaffManagement({ token }) {
         </label>
         {error && <p style={styles.error}>{error}</p>}
         {created && (
-  <p style={styles.success}>
-    Created {created.employee.user.name} ({created.employee.user.email}).{' '}
-    {created.emailSent
-      ? 'Login credentials were emailed to them.'
-      : 'Email was NOT sent (SMTP not configured) — relay this temp password manually:'}{' '}
-    {!created.emailSent && <code>{created.tempPassword}</code>}
-  </p>
-)}
+          <p style={styles.success}>
+            Created {created.employee.user.name} ({created.employee.user.email}).{' '}
+            {created.emailSent
+              ? 'Login credentials were emailed to them.'
+              : 'Email was NOT sent (SMTP not configured) — relay this temp password manually:'}{' '}
+            {!created.emailSent && <code>{created.tempPassword}</code>}
+          </p>
+        )}
         <button style={styles.button} type="submit" disabled={submitting}>
           {submitting ? 'Creating...' : 'Create staff account'}
         </button>

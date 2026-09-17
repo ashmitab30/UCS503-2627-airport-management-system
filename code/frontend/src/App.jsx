@@ -4,7 +4,21 @@ import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import BookFlight from './pages/BookFlight.jsx';
+import MyFlights from './pages/MyFlights.jsx';
+import FlightTracking from './pages/FlightTracking.jsx';
 import ProtectedRoute from './pages/ProtectedRoute.jsx';
+import AdminLayout from './pages/admin/AdminLayout.jsx';
+import AdminDashboard from './pages/admin/AdminDashboard.jsx';
+import AdminFlights from './pages/admin/AdminFlights.jsx';
+import AdminGates from './pages/admin/AdminGates.jsx';
+import AdminResources from './pages/admin/AdminResources.jsx';
+import AdminEmployees from './pages/admin/AdminEmployees.jsx';
+import AdminShifts from './pages/admin/AdminShifts.jsx';
+import AdminAssistance from './pages/admin/AdminAssistance.jsx';
+import AdminEmergencies from './pages/admin/AdminEmergencies.jsx';
+import AdminBookings from './pages/admin/AdminBookings.jsx';
+import AdminPassengers from './pages/admin/AdminPassengers.jsx';
 import { styles } from './styles.js';
 
 export default function App() {
@@ -23,6 +37,56 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/book"
+            element={
+              <ProtectedRoute>
+                <BookFlight />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-flights"
+            element={
+              <ProtectedRoute>
+                <MyFlights />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/track/:flightId"
+            element={
+              <ProtectedRoute>
+                <FlightTracking />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute roles={['admin', 'ops_manager']}>
+                <AdminLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<AdminDashboard />} />
+            <Route path="flights" element={<AdminFlights />} />
+            <Route path="gates" element={<AdminGates />} />
+            <Route path="resources" element={<AdminResources />} />
+            <Route path="emergencies" element={<AdminEmergencies />} />
+            <Route
+              path="employees"
+              element={
+                <ProtectedRoute roles={['admin']}>
+                  <AdminEmployees />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="shifts" element={<AdminShifts />} />
+            <Route path="passengers" element={<AdminPassengers />} />
+            <Route path="assistance" element={<AdminAssistance />} />
+            <Route path="bookings" element={<AdminBookings />} />
+          </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

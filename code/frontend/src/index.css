@@ -15,3 +15,99 @@ input:focus, select:focus, button:focus {
   outline: 2px solid #2F5CF5;
   outline-offset: 1px;
 }
+
+/* ---- booking flow (aviation theme, matches approved mockup) ---- */
+.book-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 60px 24px 100px;
+  background:
+    radial-gradient(circle at 12% 15%, rgba(255,255,255,.10) 0%, transparent 40%),
+    linear-gradient(155deg,#081F4D 0%,#0E3B8C 42%,#2E7CF6 78%,#6FB1FF 100%);
+}
+.book-hero .map-dots {
+  position: absolute; inset: 0; opacity: .15; pointer-events: none;
+  background-image: radial-gradient(circle,#fff 1px,transparent 1.4px);
+  background-size: 18px 18px;
+}
+.book-hero-inner { max-width: 640px; margin: 0 auto; text-align: center; position: relative; z-index: 2; }
+.book-hero-inner h1 { color: #fff; font-size: 34px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+.book-hero-inner p { color: rgba(255,255,255,.72); font-size: 14.5px; margin: 12px auto 0; max-width: 440px; line-height: 1.6; }
+
+.book-search-card {
+  max-width: 720px; margin: -56px auto 0; background: #fff; border-radius: 20px;
+  box-shadow: 0 24px 50px rgba(6,20,52,.25); padding: 20px 24px; position: relative; z-index: 3;
+}
+.book-page-wrap { max-width: 720px; margin: 0 auto; padding: 40px 24px 60px; }
+
+.flight-card-notch {
+  background: #fff; border-radius: 18px; padding: 0; margin-bottom: 14px;
+  box-shadow: 0 8px 22px rgba(16,28,52,.10); cursor: pointer; overflow: hidden;
+  border: 1px solid #E3E8F0;
+}
+.flight-card-notch:hover { box-shadow: 0 12px 28px rgba(16,28,52,.15); }
+.flight-card-notch-row { position: relative; height: 0; }
+.flight-card-notch-row::before, .flight-card-notch-row::after {
+  content: ''; position: absolute; top: -9px; width: 18px; height: 18px; border-radius: 50%; background: #F5F7FA;
+}
+.flight-card-notch-row::before { left: -9px; } .flight-card-notch-row::after { right: -9px; }
+.flight-card-perf { border-top: 2px dashed #E3E8F0; }
+
+.seat-map-card { background: #fff; border-radius: 22px; padding: 26px; box-shadow: 0 10px 26px rgba(16,28,52,.10); border: 1px solid #E3E8F0; }
+.seat-map-arch { width: 120px; height: 62px; border-radius: 120px 120px 0 0; border: 2px solid #F0F3F8; border-bottom: none; margin: 0 auto 20px; }
+
+.boarding-pass-card {
+  border-radius: 20px; color: #fff; overflow: hidden; max-width: 420px;
+  background: linear-gradient(155deg,#0A2D66 0%,#1857C9 55%,#4FA6FF 130%);
+  box-shadow: 0 18px 38px rgba(8,25,64,.28);
+}
+.boarding-pass-notch-row { position: relative; height: 0; }
+.boarding-pass-notch-row::before, .boarding-pass-notch-row::after {
+  content: ''; position: absolute; top: -11px; width: 22px; height: 22px; border-radius: 50%; background: #F5F7FA;
+}
+.boarding-pass-notch-row::before { left: -11px; } .boarding-pass-notch-row::after { right: -11px; }
+.boarding-pass-perf { border-top: 2px dashed rgba(255,255,255,.3); }
+
+
+/* ---- flight tracking ---- */
+.track-map-card {
+  border-radius: 20px; overflow: hidden; position: relative;
+  background: linear-gradient(155deg,#0A2D66,#1857C9 60%,#4FA6FF);
+  padding: 26px 24px 30px; min-height: 190px;
+}
+.track-map-card .tm-dots {
+  position: absolute; inset: 0; opacity: .18;
+  background-image: radial-gradient(circle,#fff 1px,transparent 1.4px); background-size: 14px 14px;
+}
+.track-status-pill {
+  display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.3); color: #fff; padding: 6px 13px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; position: relative; z-index: 2;
+}
+
+/* ---- admin layout ---- */
+.admin-shell { display: flex; min-height: 100vh; }
+.admin-sidebar {
+  width: 220px; flex-shrink: 0; background: #fff; border-right: 1px solid #E3E8F0;
+  padding: 20px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.admin-sidebar .brand { font-size: 14px; font-weight: 800; padding: 6px 10px 18px; color: #0F172A; }
+.admin-nav-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: #8592A8;
+  font-weight: 700; padding: 14px 10px 6px;
+}
+.admin-nav-item {
+  display: block; padding: 9px 10px; border-radius: 8px; font-size: 13.5px; font-weight: 600;
+  color: #57647D; margin-bottom: 2px; text-decoration: none;
+}
+.admin-nav-item:hover { background: #F0F3F8; color: #0F172A; }
+.admin-nav-item.active { background: #EAF2FE; color: #0A2D66; }
+.admin-main { flex: 1; min-width: 0; padding: 30px 36px 60px; }
+.admin-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; }
+.admin-nav-card {
+  display: block; background: #fff; border: 1px solid #E3E8F0; border-radius: 14px;
+  padding: 20px; text-decoration: none; color: inherit; box-shadow: 0 1px 2px rgba(15,23,42,.05);
+}
+.admin-nav-card:hover { border-color: #2E7CF6; }
+.admin-nav-card h3 { margin: 0 0 6px; font-size: 15px; color: #0F172A; }
+.admin-nav-card p { margin: 0; font-size: 12.5px; color: #57647D; }

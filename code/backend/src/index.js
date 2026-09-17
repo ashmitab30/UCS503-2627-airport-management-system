@@ -16,6 +16,9 @@ import { flightsRouter } from './routes/flights.js';
 import { turnaroundRouter } from './routes/turnaround.js';
 import { resourcesRouter } from './routes/resources.js';
 import { resourceAssignmentsRouter } from './routes/resourceAssignments.js';
+import { bookingsRouter } from './routes/bookings.js';
+import { emergenciesRouter } from './routes/emergencies.js';
+import { trackingRouter } from './routes/tracking.js';
 
 const app = express();
 app.use(cors());
@@ -33,6 +36,9 @@ app.use('/flights', flightsRouter);
 app.use('/turnaround', turnaroundRouter);
 app.use('/resources', resourcesRouter);
 app.use('/resource-assignments', resourceAssignmentsRouter);
+app.use('/bookings', bookingsRouter);
+app.use('/emergencies', emergenciesRouter);
+app.use('/tracking', trackingRouter);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Airport Management System API — Week 3: Ops Core (flights, gates, turnaround, resources)' });

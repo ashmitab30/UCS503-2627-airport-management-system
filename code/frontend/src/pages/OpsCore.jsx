@@ -45,7 +45,7 @@ export default function OpsCore({ token, isAdmin }) {
 // Admin only: add airports / aircraft types. Rarely used after initial
 // setup — kept as a small collapsible form rather than a full page.
 // ---------------------------------------------------------------------
-function ReferenceData({ token, airports, aircraftTypes, onChange }) {
+export function ReferenceData({ token, airports, aircraftTypes, onChange }) {
   const [open, setOpen] = useState(false);
   const [airportForm, setAirportForm] = useState({ name: '', code: '', timezone: 'UTC' });
   const [aircraftForm, setAircraftForm] = useState({ model: '', capacity: '', size_class: 'medium' });
@@ -117,7 +117,7 @@ function ReferenceData({ token, airports, aircraftTypes, onChange }) {
 // ---------------------------------------------------------------------
 // Gate management: create + list, grouped by airport.
 // ---------------------------------------------------------------------
-function GateManager({ token, airports, gates, onChange }) {
+export function GateManager({ token, airports, gates, onChange }) {
   const [form, setForm] = useState({ airport_id: '', code: '', size_class: 'medium' });
   const [error, setError] = useState(null);
 
@@ -192,7 +192,7 @@ function GateManager({ token, airports, gates, onChange }) {
 // centerpiece of the Week 3 demo — creating an overlapping flight on a
 // busy gate is what shows the conflict rule working live.
 // ---------------------------------------------------------------------
-function FlightManager({ token, airports, aircraftTypes, gates }) {
+export function FlightManager({ token, airports, aircraftTypes, gates }) {
   const [flights, setFlights] = useState([]);
   const [form, setForm] = useState({
     flight_number: '', aircraft_type_id: '', origin_id: '', dest_id: '',
@@ -392,7 +392,7 @@ function FlightManager({ token, airports, aircraftTypes, gates }) {
 // Resource allocation: fuel trucks / baggage carts / crew, assigned to
 // flights with the same overlap-conflict pattern as gates and shifts.
 // ---------------------------------------------------------------------
-function ResourceManager({ token, airports }) {
+export function ResourceManager({ token, airports }) {
   const [resources, setResources] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [resourceForm, setResourceForm] = useState({ airport_id: '', type: 'fuel_truck' });

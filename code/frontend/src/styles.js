@@ -159,4 +159,46 @@ export const styles = {
     marginTop: '0.25rem',
   },
   authFootnote: { fontSize: '0.82rem', color: colors.muted, marginTop: '1.5rem' },
+
+  // ---- passenger booking flow ----
+  bookingWrap: { fontFamily, maxWidth: 720, margin: '2rem auto', padding: '0 1.5rem', color: colors.ink },
+  searchRow: { display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '1.5rem' },
+  searchField: { display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.8rem', fontWeight: 600, color: colors.slate },
+  flightCard: {
+    border: `1px solid ${colors.line}`, borderRadius: 14, padding: '1.1rem 1.3rem',
+    marginBottom: '0.9rem', background: colors.surface, boxShadow: '0 1px 2px rgba(15,23,42,0.05)',
+    cursor: 'pointer',
+  },
+  flightCardTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.7rem' },
+  routeLine: { display: 'flex', alignItems: 'center', gap: '1rem' },
+  routeCode: { fontSize: '1.3rem', fontWeight: 800, letterSpacing: '-0.01em' },
+  routeTime: { fontSize: '0.78rem', color: colors.muted },
+  routeArrow: { flex: 1, textAlign: 'center', color: colors.muted, fontSize: '0.78rem' },
+  priceTag: { fontSize: '1.05rem', fontWeight: 800, color: colors.accentDark },
+
+  seatGrid: { display: 'grid', gridTemplateColumns: 'repeat(6, 40px)', gap: '0.5rem', justifyContent: 'center', margin: '1.5rem 0' },
+  seatBase: {
+    width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '0.72rem', fontWeight: 700, border: `1.5px solid ${colors.line}`, cursor: 'pointer', background: colors.surface,
+  },
+  seatBooked: { background: colors.surfaceAlt, color: colors.line, cursor: 'not-allowed', borderColor: colors.surfaceAlt },
+  seatSelected: { background: colors.accent, color: '#fff', borderColor: colors.accent },
+
+  ticket: {
+    borderRadius: 18, color: '#fff', overflow: 'hidden', maxWidth: 420,
+    background: `linear-gradient(155deg, ${colors.navy} 0%, ${colors.accent} 60%, #4FA6FF 130%)`,
+    boxShadow: '0 16px 32px rgba(8,25,64,0.25)',
+  },
+  ticketTop: { padding: '1.3rem 1.4rem 1rem' },
+  ticketRoute: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0.8rem 0' },
+  ticketCode: { fontSize: '1.6rem', fontWeight: 800 },
+  ticketPerf: { borderTop: '2px dashed rgba(255,255,255,0.3)' },
+  ticketBottom: { padding: '1.1rem 1.4rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.8rem' },
+  ticketKey: { fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'rgba(255,255,255,0.65)' },
+  ticketVal: { fontSize: '0.85rem', fontWeight: 700, marginTop: 2 },
+
+  pipeline: { display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', fontWeight: 600 },
+  pipelineStepDone: { color: colors.success },
+  pipelineStepCurrent: { color: colors.accentDark },
+  pipelineStepPending: { color: colors.muted },
 };
