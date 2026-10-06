@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
-import { styles, colors } from '../styles.js';
+import { styles } from '../styles.js';
 
 const PIPELINE_STEPS = ['requested', 'assigned', 'in_progress', 'completed'];
 const NEXT_STATUS = { requested: 'assigned', assigned: 'in_progress', in_progress: 'completed' };
-const PIPELINE_LABELS = { requested: 'Submitted', assigned: 'Assigned', in_progress: 'In progress', completed: 'Completed' };
+const PIPELINE_LABELS = { requested: 'Submitted', assigned: 'Assigned', in_progress: 'In Progress', completed: 'Completed' };
 
-// Staff-facing view of assistance requests, backed by the same
-// /bookings/assistance/* endpoints used to build the passenger side —
-// this is the "other end" of that same data, not a separate system.
 export default function AssistanceQueue({ token }) {
   const [requests, setRequests] = useState(null);
   const [error, setError] = useState(null);
@@ -43,48 +40,103 @@ export default function AssistanceQueue({ token }) {
 
   return (
     <div style={styles.card}>
-      <h2 style={styles.cardTitle}>Assistance requests</h2>
-      {error && <p style={styles.error}>{error}</p>}
-      {requests === null && <p style={styles.muted}>Loading…</p>}
-      {requests && requests.length === 0 && <p style={styles.muted}>No assistance requests right now.</p>}
-
-      {requests && requests.map((r) => (
-        <div key={r.id} style={{ padding: '0.9rem 0', borderBottom: `1px solid ${colors.lineSoft}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-            <strong>{r.flight_number}</strong>
-            <span style={styles.badge}>{r.type.replace('_', ' ')}</span>
-          </div>
-          <div style={{ fontSize: '0.82rem', color: colors.muted, marginBottom: '0.5rem' }}>
-            {r.passenger_name || 'Passenger'} &middot; {r.booking_ref}
-            {r.notes ? ` — "${r.notes}"` : ''}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={styles.pipeline}>
-              {PIPELINE_STEPS.map((step, i) => {
-                const currentIndex = PIPELINE_STEPS.indexOf(r.status);
-                const state = i < currentIndex ? 'done' : i === currentIndex ? 'current' : 'pending';
-                const stepStyle =
-                  state === 'done' ? styles.pipelineStepDone :
-                  state === 'current' ? styles.pipelineStepCurrent : styles.pipelineStepPending;
-                return (
-                  <span key={step} style={stepStyle}>
-                    {PIPELINE_LABELS[step]}{i < PIPELINE_STEPS.length - 1 ? ' →' : ''}
-                  </span>
-                );
-              })}
-            </div>
-            {NEXT_STATUS[r.status] && (
-              <button
-                style={styles.buttonSecondary}
-                disabled={busyId === r.id}
-                onClick={() => advance(r)}
-              >
-                {busyId === r.id ? 'Updating…' : `Mark ${PIPELINE_LABELS[NEXT_STATUS[r.status]]}`}
-              </button>
-            )}
-          </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span className="material-symbols-outlined" style={{ color: 'var(--color-primary)', fontSize: '26px' }}>
+            accessible
+          </span>
+          <h2 style={{ ...styles.cardTitle, margin: 0 }}>Special Passenger Assistance & Care Queue</h2>
         </div>
-      ))}
+        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-slate)' }}>
+          {requests ? `${requests.length} Requests` : 'Loading…'}
+        </span>
+      </div>
+
+      {error && <p style={styles.error}>{error}</p>}
+      {requests === null && <p style={styles.muted}>Loading assistance requests…</p>}
+      {requests && requests.length === 0 && (
+        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--color-slate)', background: 'var(--color-surface-low)', borderRadius: '14px' }}>
+          <span className="material-symbols-outlined" style={{ fontSize: '32px', color: 'var(--color-success)', marginBottom: '4px' }}>
+            task_alt
+          </span>
+          <p style={{ margin: 0, fontWeight: 700 }}>No pending passenger assistance requests.</p>
+        </div>
+      )}
+
+      {requests && requests.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {requests.map((r) => (
+            <div
+              key={r.id}
+              style={{
+                padding: '20px 24px',
+                borderRadius: '16px',
+                background: 'var(--color-surface-lowest)',
+                border: '1px solid rgba(226, 232, 240, 0.9)',
+                boxShadow: 'var(--shadow-card)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span className="status-pill status-pill-blue">
+                      Flight #{r.flight_number}
+                    </span>
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}>
+                      Mission #AST-{r.id}
+                    </span>
+                    <span style={{ fontSize: '12px', color: 'var(--color-outline)' }}>
+                      Ref {r.booking_ref}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--color-on-surface)' }}>
+                    {r.passenger_name || 'Passenger'} &middot;{' '}
+                    <span style={{ textTransform: 'capitalize', color: 'var(--color-primary)' }}>
+                      {r.type.replace('_', ' ')}
+                    </span>
+                  </div>
+                  {r.notes && (
+                    <div style={{ fontSize: '13px', color: 'var(--color-slate)', marginTop: '4px', fontStyle: 'italic' }}>
+                      "{r.notes}"
+                    </div>
+                  )}
+                </div>
+
+                {NEXT_STATUS[r.status] && (
+                  <button
+                    className="btn-primary-aero"
+                    style={{ padding: '8px 18px', fontSize: '13px' }}
+                    disabled={busyId === r.id}
+                    onClick={() => advance(r)}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>check</span>
+                    <span>{busyId === r.id ? 'Updating…' : `Advance to ${PIPELINE_LABELS[NEXT_STATUS[r.status]]}`}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Progress Stepper */}
+              <div className="stepper-container" style={{ paddingTop: '8px', borderTop: '1px solid rgba(241, 243, 255, 0.9)' }}>
+                {PIPELINE_STEPS.map((step, i) => {
+                  const currentIndex = PIPELINE_STEPS.indexOf(r.status);
+                  const state = i < currentIndex ? 'done' : i === currentIndex ? 'active' : 'pending';
+                  return (
+                    <span key={step} className={`stepper-pill ${state}`}>
+                      {state === 'done' && <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>check</span>}
+                      {state === 'active' && <span className="pulse-radar-dot" />}
+                      <span>{PIPELINE_LABELS[step]}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

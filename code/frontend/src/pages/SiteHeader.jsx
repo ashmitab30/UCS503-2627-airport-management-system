@@ -1,33 +1,108 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 
-// Shared top nav for the passenger area (Home/Book/My Flights), matching
-// the website-style header from the approved mockup — used by BookFlight,
-// MyFlights, and FlightTracking instead of each page having its own
-// simple "back to dashboard" link.
 export default function SiteHeader() {
   const { user, logout } = useAuth();
 
   return (
     <header className="site-header">
-      <NavLink to="/dashboard" className="brand" style={{ textDecoration: 'none' }}>
-        <span className="mark">✈️</span> Meridian Ops
+      {/* Brand logo & title */}
+      <NavLink to="/dashboard" className="brand">
+        <div className="brand-icon-circle">
+          <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+            flight_takeoff
+          </span>
+        </div>
+        <div className="brand-text-wrap">
+          <span className="brand-name">MERIDIAN</span>
+          <span className="brand-sub">Passenger Ops</span>
+        </div>
       </NavLink>
-      <nav className="site-nav">
-        <NavLink to="/dashboard" className={navClass}>Dashboard</NavLink>
-        <NavLink to="/book" className={navClass}>Book a flight</NavLink>
-        <NavLink to="/my-flights" className={navClass}>My flights</NavLink>
+
+      {/* Nav pill group */}
+      <nav className="site-nav-pill-group">
+        <NavLink to="/dashboard" className={navClass}>
+          Dashboard
+        </NavLink>
+        <NavLink to="/book" className={navClass}>
+          Book Flight
+        </NavLink>
+        <NavLink to="/my-flights" className={navClass}>
+          My Flights
+        </NavLink>
       </nav>
-      <div className="site-header-right">
-        <span style={{ fontSize: '0.8rem', color: '#57647D' }}>{user?.name}</span>
+
+      {/* Right controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Terminal indicator */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 14px',
+            borderRadius: '999px',
+            backgroundColor: 'var(--color-surface-low)',
+            border: '1px solid rgba(226, 232, 240, 0.8)',
+            fontSize: '11px',
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            color: 'var(--color-secondary)',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}
+        >
+          <span className="dot-indicator green" />
+          <span>Passenger Terminal • T3</span>
+        </div>
+
+        {/* User Pill */}
+        {user && (
+          <div className="header-user-pill">
+            <div className="header-avatar-circle">
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                person
+              </span>
+            </div>
+            <span
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontWeight: 700,
+                fontSize: '13px',
+                color: 'var(--color-on-surface)',
+              }}
+            >
+              {user.name}
+            </span>
+          </div>
+        )}
+
+        {/* Sign Out Button */}
         <button
           onClick={logout}
           style={{
-            fontSize: '0.78rem', fontWeight: 600, padding: '6px 12px', borderRadius: 7,
-            border: '1px solid #E2E8F0', background: '#fff', cursor: 'pointer', color: '#0F172A',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            fontSize: '13px',
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            color: 'var(--color-on-surface-variant)',
+            padding: '6px 10px',
+            borderRadius: '8px',
+            transition: 'color 0.15s',
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-error)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-on-surface-variant)')}
+          title="Sign out of passenger portal"
         >
-          Sign out
+          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+            logout
+          </span>
+          <span>Sign Out</span>
         </button>
       </div>
     </header>
@@ -35,5 +110,5 @@ export default function SiteHeader() {
 }
 
 function navClass({ isActive }) {
-  return isActive ? 'active' : undefined;
+  return `site-nav-link${isActive ? ' active' : ''}`;
 }
