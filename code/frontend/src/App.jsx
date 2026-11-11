@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import BookFlight from './pages/BookFlight.jsx';
 import MyFlights from './pages/MyFlights.jsx';
 import FlightTracking from './pages/FlightTracking.jsx';
+import BoardingPass from './pages/BoardingPass.jsx';
 import ProtectedRoute from './pages/ProtectedRoute.jsx';
 import AdminLayout from './pages/admin/AdminLayout.jsx';
 import AdminDashboard from './pages/admin/AdminDashboard.jsx';
@@ -58,6 +59,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <FlightTracking />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/boarding-pass/:id"
+            element={
+              <ProtectedRoute>
+                <BoardingPass />
               </ProtectedRoute>
             }
           />

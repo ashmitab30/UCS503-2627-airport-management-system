@@ -148,3 +148,4 @@ Database is up to date. No pending migrations.
 - Full timed seat holding (expiring reservations with countdown before payment) and boarding pass PDF generation belong to Week 4 and will be implemented in the Week 4 phase.
 - Live WebSockets client on frontend with room subscription belongs to Week 5.
 - The `passenger` table is linked 1-to-1 per booking for now; multi-passenger bookings per itinerary remain deferred per user guidance.
+

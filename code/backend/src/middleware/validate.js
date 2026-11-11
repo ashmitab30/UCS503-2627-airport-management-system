@@ -40,3 +40,4 @@ export function paginationQuerySchema(defaultLimit = 50, maxLimit = 200) {
       .transform((val) => (val ? Math.max(0, parseInt(val, 10) || 0) : 0)),
   });
 }
+

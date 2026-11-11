@@ -9,9 +9,16 @@ import {
 } from '../constants/index.js';
 import {
   executeBooking,
+  holdSeat,
+  confirmHeldBooking,
+  checkInBooking,
+  cancelBooking,
+  flagNoShowsForFlight,
   calculateSeatPriceCents,
+  cleanupExpiredHolds,
 } from '../services/bookingService.js';
 import { generateSeatsForFlight } from '../services/seatService.js';
+import { streamBoardingPassPdf, generateQrCode } from '../services/boardingPassService.js';
 import { validate, paginationQuerySchema } from '../middleware/validate.js';
 import { io } from '../index.js';
 
@@ -24,7 +31,7 @@ const searchFlightsQuerySchema = paginationQuerySchema().extend({
   class: z.enum(['economy', 'premium_economy', 'business', 'first']).optional(),
 });
 
-// GET /bookings/search-flights — any authenticated user. Real fares per flight & class.
+// GET /bookings/search-flights — search flights with real pricing and class filters.
 bookingsRouter.get(
   '/search-flights',
   authenticate,
@@ -61,7 +68,6 @@ bookingsRouter.get(
                 o.code AS origin_code, o.name AS origin_name,
                 d.code AS dest_code, d.name AS dest_name,
                 at.model AS aircraft_model, at.size_class,
-                -- Legacy alias for compatibility with existing UI
                 f.base_price_cents AS mock_price_cents,
                 ROUND(f.base_price_cents * 1.0) AS economy_price_cents,
                 ROUND(f.base_price_cents * 1.4) AS premium_economy_price_cents,
@@ -77,7 +83,6 @@ bookingsRouter.get(
         params
       );
 
-      // If user filtered by class, compute price for that class
       const formatted = rows.map((flight) => {
         const targetClass = seatClass || 'economy';
         const priceCents = calculateSeatPriceCents(flight.base_price_cents, targetClass);
@@ -97,12 +102,15 @@ bookingsRouter.get(
   }
 );
 
-// GET /bookings/flights/:flightId/seats — loads seats and prices. Pre-generates if missing.
+// GET /bookings/flights/:flightId/seats — loads seats and prices with expired hold cleanup.
 bookingsRouter.get('/flights/:flightId/seats', authenticate, async (req, res) => {
   const flightId = parseInt(req.params.flightId, 10);
   if (isNaN(flightId)) return res.status(400).json({ error: 'Invalid flight ID' });
 
   try {
+    // Release any expired holds first
+    await cleanupExpiredHolds(pool);
+
     const flightCheck = await pool.query(
       'SELECT id, aircraft_type_id, base_price_cents, status FROM flight WHERE id = $1',
       [flightId]
@@ -119,7 +127,6 @@ bookingsRouter.get('/flights/:flightId/seats', authenticate, async (req, res) =>
       [flightId]
     );
 
-    // If seats are missing, generate them now using the aircraft type capacity
     if (existing.rows.length === 0) {
       await generateSeatsForFlight(flightId, flight.aircraft_type_id, pool);
       existing = await pool.query(
@@ -149,7 +156,7 @@ bookingsRouter.get('/flights/:flightId/seats', authenticate, async (req, res) =>
   }
 });
 
-const createBookingSchema = z.object({
+const holdOrBookSchema = z.object({
   flight_id: z.number().int().positive('flight_id must be a positive integer'),
   seat_id: z.number().int().positive('seat_id must be a positive integer'),
   assistance_type: z.enum(ASSISTANCE_TYPES).optional().nullable(),
@@ -166,12 +173,96 @@ const createBookingSchema = z.object({
     .optional(),
 });
 
-// POST /bookings — validated integers, concurrency-safe locking on seat, snapshot fare.
+// POST /bookings/hold — holds a seat with a timed expiration (10 min).
+bookingsRouter.post(
+  '/hold',
+  authenticate,
+  requireRole('passenger', 'admin'),
+  validate({ body: holdOrBookSchema }),
+  async (req, res) => {
+    const { flight_id, seat_id, assistance_type, assistance_notes, passenger } = req.body;
+
+    try {
+      const result = await holdSeat({
+        userId: req.user.id,
+        flightId: flight_id,
+        seatId: seat_id,
+        assistanceType: assistance_type,
+        assistanceNotes: assistance_notes,
+        passengerDetails: passenger,
+      });
+
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+
+      if (io) {
+        io.emit('seat:held', {
+          flightId: flight_id,
+          seatId: seat_id,
+          bookingId: result.booking.id,
+        });
+      }
+
+      res.status(201).json({
+        booking: result.booking,
+        assistance: result.assistance,
+      });
+    } catch (err) {
+      console.error('hold seat error:', err.message);
+      res.status(500).json({ error: 'Could not hold seat' });
+    }
+  }
+);
+
+const confirmPaymentSchema = z.object({
+  payment_method: z.string().optional().default('mock_card'),
+});
+
+// POST /bookings/:id/confirm-payment — confirms a held booking via mock payment.
+bookingsRouter.post(
+  '/:id/confirm-payment',
+  authenticate,
+  validate({ body: confirmPaymentSchema }),
+  async (req, res) => {
+    const bookingId = parseInt(req.params.id, 10);
+    if (isNaN(bookingId)) return res.status(400).json({ error: 'Invalid booking ID' });
+
+    try {
+      const result = await confirmHeldBooking({
+        bookingId,
+        userId: req.user.id,
+        paymentMethod: req.body.payment_method,
+      });
+
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+
+      if (io) {
+        io.emit('booking:confirmed', {
+          bookingId: result.booking.id,
+          bookingRef: result.booking.booking_ref,
+        });
+      }
+
+      res.json({
+        booking: result.booking,
+        payment: result.payment,
+      });
+    } catch (err) {
+      console.error('confirm payment error:', err.message);
+      res.status(500).json({ error: 'Could not confirm payment' });
+    }
+  }
+);
+
+// POST /bookings — direct all-in-one booking (holds + confirms).
 bookingsRouter.post(
   '/',
   authenticate,
   requireRole('passenger', 'admin'),
-  validate({ body: createBookingSchema }),
+  validate({ body: holdOrBookSchema }),
   async (req, res) => {
     const { flight_id, seat_id, assistance_type, assistance_notes, passenger } = req.body;
 
@@ -209,6 +300,150 @@ bookingsRouter.post(
   }
 );
 
+// POST /bookings/:id/check-in — web check-in within 24h window.
+bookingsRouter.post('/:id/check-in', authenticate, async (req, res) => {
+  const bookingId = parseInt(req.params.id, 10);
+  if (isNaN(bookingId)) return res.status(400).json({ error: 'Invalid booking ID' });
+
+  const { seat_id } = req.body;
+  const parsedSeatId = seat_id ? parseInt(seat_id, 10) : null;
+
+  try {
+    const result = await checkInBooking({
+      bookingId,
+      userId: req.user.id,
+      seatId: parsedSeatId,
+    });
+
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    if (io) {
+      io.emit('booking:checked_in', { bookingId });
+    }
+
+    res.json({ booking: result.booking });
+  } catch (err) {
+    console.error('check-in error:', err.message);
+    res.status(500).json({ error: 'Could not complete check-in' });
+  }
+});
+
+// POST /bookings/:id/cancel — cancels booking and issues refund.
+bookingsRouter.post('/:id/cancel', authenticate, async (req, res) => {
+  const bookingId = parseInt(req.params.id, 10);
+  if (isNaN(bookingId)) return res.status(400).json({ error: 'Invalid booking ID' });
+
+  const isAdmin = ADMIN_OPS_ROLES.includes(req.user.role);
+
+  try {
+    const result = await cancelBooking({
+      bookingId,
+      userId: req.user.id,
+      isAdmin,
+    });
+
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    if (io) {
+      io.emit('booking:cancelled', { bookingId });
+    }
+
+    res.json({ booking: result.booking, refund: result.refund });
+  } catch (err) {
+    console.error('cancel booking error:', err.message);
+    res.status(500).json({ error: 'Could not cancel booking' });
+  }
+});
+
+// POST /bookings/flights/:flightId/flag-no-shows — admin/ops flags departed no-shows.
+bookingsRouter.post(
+  '/flights/:flightId/flag-no-shows',
+  authenticate,
+  requireRole(...ADMIN_OPS_ROLES),
+  async (req, res) => {
+    const flightId = parseInt(req.params.flightId, 10);
+    if (isNaN(flightId)) return res.status(400).json({ error: 'Invalid flight ID' });
+
+    try {
+      const result = await flagNoShowsForFlight({ flightId });
+      res.json(result);
+    } catch (err) {
+      console.error('flag no-shows error:', err.message);
+      res.status(500).json({ error: 'Could not flag no-shows' });
+    }
+  }
+);
+
+// GET /bookings/:id/boarding-pass — JSON view with QR Code data URL.
+bookingsRouter.get('/:id/boarding-pass', authenticate, async (req, res) => {
+  const bookingId = parseInt(req.params.id, 10);
+  if (isNaN(bookingId)) return res.status(400).json({ error: 'Invalid booking ID' });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT b.id, b.booking_ref, b.status, b.created_at, b.price_cents, b.user_id,
+              f.flight_number, f.scheduled_departure, f.scheduled_arrival, f.status AS flight_status,
+              o.code AS origin_code, o.name AS origin_name,
+              d.code AS dest_code, d.name AS dest_name,
+              g.code AS gate_code,
+              s.seat_number, s.class AS seat_class,
+              COALESCE(p.name, u.name) AS passenger_name,
+              COALESCE(p.email, u.email) AS passenger_email,
+              p.passport_number, p.nationality,
+              ar.type AS assistance_type, ar.status AS assistance_status
+       FROM booking b
+       JOIN flight f ON f.id = b.flight_id
+       JOIN airport o ON o.id = f.origin_id
+       JOIN airport d ON d.id = f.dest_id
+       LEFT JOIN gate g ON g.id = f.gate_id
+       LEFT JOIN seat s ON s.id = b.seat_id
+       LEFT JOIN "user" u ON u.id = b.user_id
+       LEFT JOIN passenger p ON p.id = b.passenger_id
+       LEFT JOIN assistance_request ar ON ar.booking_id = b.id
+       WHERE b.id = $1`,
+      [bookingId]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Booking not found' });
+    const b = rows[0];
+
+    const isOwner = req.user.id === b.user_id;
+    const isStaff = ASSISTANCE_STAFF_ROLES.includes(req.user.role);
+    if (!isOwner && !isStaff) return res.status(403).json({ error: 'Forbidden' });
+
+    const qrPayload = `M1${b.passenger_name.padEnd(20)} E${b.booking_ref} ${b.origin_code}${b.dest_code}${b.flight_number.padEnd(7)} ${b.seat_number} ${b.status.toUpperCase()}`;
+    const qrDataUrl = await generateQrCode(qrPayload);
+
+    res.json({
+      boarding_pass: {
+        ...b,
+        qr_code_data_url: qrDataUrl,
+        priority_boarding: Boolean(b.assistance_type),
+      },
+    });
+  } catch (err) {
+    console.error('get boarding pass error:', err.message);
+    res.status(500).json({ error: 'Could not load boarding pass' });
+  }
+});
+
+// GET /bookings/:id/boarding-pass.pdf — PDF download stream with QR code.
+bookingsRouter.get('/:id/boarding-pass.pdf', authenticate, async (req, res) => {
+  const bookingId = parseInt(req.params.id, 10);
+  if (isNaN(bookingId)) return res.status(400).json({ error: 'Invalid booking ID' });
+
+  try {
+    await streamBoardingPassPdf(bookingId, res);
+  } catch (err) {
+    console.error('stream boarding pass pdf error:', err.message);
+    res.status(500).json({ error: 'Could not stream boarding pass PDF' });
+  }
+});
+
 const listMyBookingsSchema = paginationQuerySchema();
 
 // GET /bookings/mine — logged in passenger's bookings.
@@ -220,7 +455,7 @@ bookingsRouter.get(
     const { limit, offset } = req.query;
     try {
       const { rows } = await pool.query(
-        `SELECT b.id, b.booking_ref, b.status, b.created_at, b.price_cents,
+        `SELECT b.id, b.booking_ref, b.status, b.created_at, b.price_cents, b.held_until,
                 f.id AS flight_id, f.flight_number, f.scheduled_departure, f.scheduled_arrival, f.status AS flight_status,
                 o.code AS origin_code, o.name AS origin_name,
                 d.code AS dest_code, d.name AS dest_name,
@@ -254,7 +489,7 @@ bookingsRouter.get('/:id', authenticate, async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      `SELECT b.id, b.booking_ref, b.status, b.created_at, b.user_id, b.price_cents,
+      `SELECT b.id, b.booking_ref, b.status, b.created_at, b.user_id, b.price_cents, b.held_until,
               f.flight_number, f.scheduled_departure, f.scheduled_arrival, f.status AS flight_status,
               o.code AS origin_code, o.name AS origin_name,
               d.code AS dest_code, d.name AS dest_name,
@@ -347,7 +582,6 @@ bookingsRouter.patch(
       let params;
 
       if (status === 'assigned') {
-        // Explicitly set assigned staff to current user if assigning
         query = `
           UPDATE assistance_request
           SET status = $1, assigned_staff_id = $2
@@ -356,7 +590,6 @@ bookingsRouter.patch(
         `;
         params = [status, req.user.id, assistId];
       } else {
-        // Do NOT overwrite existing assigned staff on subsequent transitions (in_progress, completed)
         query = `
           UPDATE assistance_request
           SET status = $1, assigned_staff_id = COALESCE(assigned_staff_id, $2)
@@ -388,7 +621,7 @@ bookingsRouter.get(
     const { limit, offset } = req.query;
     try {
       const { rows } = await pool.query(
-        `SELECT b.id, b.booking_ref, b.status, b.created_at, b.price_cents,
+        `SELECT b.id, b.booking_ref, b.status, b.created_at, b.price_cents, b.held_until,
                 f.flight_number, f.scheduled_departure, f.status AS flight_status,
                 o.code AS origin_code, d.code AS dest_code,
                 s.seat_number, s.class AS seat_class,

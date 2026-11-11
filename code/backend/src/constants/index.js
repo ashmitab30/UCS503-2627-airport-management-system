@@ -57,3 +57,4 @@ export const ADVISORY_LOCK_DOMAINS = {
   PARKING_SLOT: 4,
   SEAT: 5,
 };
+

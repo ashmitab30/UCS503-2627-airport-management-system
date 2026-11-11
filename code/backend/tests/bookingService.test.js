@@ -20,3 +20,4 @@ describe('Booking Service Unit Tests', () => {
     expect(calculateSeatPriceCents(base, 'unknown')).toBe(5000);
   });
 });
+

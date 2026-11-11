@@ -136,6 +136,7 @@ CREATE TABLE booking (
     status       VARCHAR(20) NOT NULL DEFAULT 'held'
                  CHECK (status IN ('held','confirmed','cancelled','checked_in','boarding','boarded','no_show')),
     booking_ref  VARCHAR(10) UNIQUE NOT NULL,
+    held_until   TIMESTAMPTZ,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

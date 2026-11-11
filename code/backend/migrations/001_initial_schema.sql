@@ -315,3 +315,4 @@ CREATE INDEX IF NOT EXISTS idx_baggage_status ON baggage(status);
 CREATE INDEX IF NOT EXISTS idx_connection_status ON connection(status);
 CREATE INDEX IF NOT EXISTS idx_resource_assignment_window ON resource_assignment(resource_id, start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_shift_window ON shift(employee_id, start_time, end_time);
+

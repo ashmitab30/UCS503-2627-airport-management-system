@@ -88,3 +88,4 @@ export async function generateSeatsForFlight(flightId, aircraftTypeId, dbClient 
 
   return seats.length;
 }
+
