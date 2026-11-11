@@ -59,6 +59,7 @@ CREATE TABLE flight (
     status                 VARCHAR(20) NOT NULL DEFAULT 'scheduled'
                             CHECK (status IN ('scheduled','boarding','departed','in_air','landed','delayed','cancelled','diverted')),
     delay_reason_code      VARCHAR(10),
+    base_price_cents       INTEGER NOT NULL DEFAULT 5000 CHECK (base_price_cents > 0),
     CHECK (dest_id <> origin_id),
     CHECK (scheduled_arrival > scheduled_departure)
 );
@@ -115,10 +116,14 @@ CREATE TABLE delay_log (
 -- ---------------------------------------------------------------------
 
 CREATE TABLE passenger (
-    id      SERIAL PRIMARY KEY,
-    name    TEXT NOT NULL,
-    email   TEXT NOT NULL,
-    phone   TEXT
+    id              SERIAL PRIMARY KEY,
+    name            TEXT NOT NULL,
+    email           TEXT NOT NULL,
+    phone           TEXT,
+    passport_number VARCHAR(50),
+    nationality     VARCHAR(50),
+    date_of_birth   DATE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE booking (
@@ -126,6 +131,8 @@ CREATE TABLE booking (
     user_id      INTEGER NOT NULL REFERENCES "user"(id),
     flight_id    INTEGER NOT NULL REFERENCES flight(id),
     seat_id      INTEGER REFERENCES seat(id),
+    passenger_id INTEGER REFERENCES passenger(id),
+    price_cents  INTEGER NOT NULL DEFAULT 5000 CHECK (price_cents >= 0),
     status       VARCHAR(20) NOT NULL DEFAULT 'held'
                  CHECK (status IN ('held','confirmed','cancelled','checked_in','boarding','boarded','no_show')),
     booking_ref  VARCHAR(10) UNIQUE NOT NULL,
@@ -192,7 +199,8 @@ CREATE TABLE emergency_alert (
     emergency_id    INTEGER NOT NULL REFERENCES emergency_event(id) ON DELETE CASCADE,
     recipient_role  VARCHAR(20) NOT NULL CHECK (recipient_role IN ('ground_crew','security','medical','ops_manager','admin')),
     sent_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    acknowledged_at TIMESTAMPTZ
+    acknowledged_at TIMESTAMPTZ,
+    acknowledged_by INTEGER REFERENCES "user"(id)
 );
 
 -- ---------------------------------------------------------------------

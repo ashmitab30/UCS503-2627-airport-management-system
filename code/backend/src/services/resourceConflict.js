@@ -9,7 +9,7 @@ import { rangesOverlap } from './shiftConflict.js';
 // generic version would need more indirection than it's worth for a
 // project this size.
 
-export async function findConflictingAssignments(resourceId, startTime, endTime, excludeAssignmentId = null) {
+export async function findConflictingAssignments(resourceId, startTime, endTime, excludeAssignmentId = null, dbClient = pool) {
   const params = [resourceId, startTime, endTime];
   let query = `
     SELECT id, start_time, end_time, flight_id
@@ -22,15 +22,15 @@ export async function findConflictingAssignments(resourceId, startTime, endTime,
     params.push(excludeAssignmentId);
     query += ` AND id <> $${params.length}`;
   }
-  const { rows } = await pool.query(query, params);
+  const { rows } = await dbClient.query(query, params);
   return rows;
 }
 
-export async function checkResourceConflict(resourceId, startTime, endTime, excludeAssignmentId = null) {
+export async function checkResourceConflict(resourceId, startTime, endTime, excludeAssignmentId = null, dbClient = pool) {
   if (!(new Date(startTime) < new Date(endTime))) {
     return { ok: false, reason: 'invalid_range', conflicts: [] };
   }
-  const conflicts = await findConflictingAssignments(resourceId, startTime, endTime, excludeAssignmentId);
+  const conflicts = await findConflictingAssignments(resourceId, startTime, endTime, excludeAssignmentId, dbClient);
   return conflicts.length > 0
     ? { ok: false, reason: 'overlap', conflicts }
     : { ok: true, conflicts: [] };

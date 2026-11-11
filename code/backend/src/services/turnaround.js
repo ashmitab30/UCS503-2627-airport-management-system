@@ -22,12 +22,12 @@ const STEP_SHARE = {
   pushback: 0.1,
 };
 
-export async function initTurnaroundChecklist(flightId, aircraftSizeClass) {
+export async function initTurnaroundChecklist(flightId, aircraftSizeClass, dbClient = pool) {
   const totalMinutes = TURNAROUND_MINUTES[aircraftSizeClass] ?? TURNAROUND_MINUTES.medium;
 
   const insertPromises = STEPS.map((step) => {
     const estMinutes = Math.max(5, Math.round(totalMinutes * STEP_SHARE[step]));
-    return pool.query(
+    return dbClient.query(
       `INSERT INTO turnaround_checklist (flight_id, step, status, est_duration)
        VALUES ($1, $2, 'pending', ($3 || ' minutes')::interval)
        RETURNING id, flight_id, step, status, est_duration`,

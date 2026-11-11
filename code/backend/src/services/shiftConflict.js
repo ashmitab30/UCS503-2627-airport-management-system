@@ -12,7 +12,7 @@ export function rangesOverlap(aStart, aEnd, bStart, bEnd) {
 // Returns the list of existing shifts for this employee that overlap
 // the given window. Pass excludeShiftId when checking an *update* to an
 // existing shift, so it doesn't conflict with itself.
-export async function findConflictingShifts(employeeId, startTime, endTime, excludeShiftId = null) {
+export async function findConflictingShifts(employeeId, startTime, endTime, excludeShiftId = null, dbClient = pool) {
   const params = [employeeId, startTime, endTime];
   let query = `
     SELECT id, start_time, end_time, area_assigned
@@ -25,17 +25,17 @@ export async function findConflictingShifts(employeeId, startTime, endTime, excl
     params.push(excludeShiftId);
     query += ` AND id <> $${params.length}`;
   }
-  const { rows } = await pool.query(query, params);
+  const { rows } = await dbClient.query(query, params);
   return rows;
 }
 
 // Throws-free helper for routes: returns { ok: true } or
 // { ok: false, conflicts }.
-export async function checkShiftConflict(employeeId, startTime, endTime, excludeShiftId = null) {
+export async function checkShiftConflict(employeeId, startTime, endTime, excludeShiftId = null, dbClient = pool) {
   if (!(new Date(startTime) < new Date(endTime))) {
     return { ok: false, reason: 'invalid_range', conflicts: [] };
   }
-  const conflicts = await findConflictingShifts(employeeId, startTime, endTime, excludeShiftId);
+  const conflicts = await findConflictingShifts(employeeId, startTime, endTime, excludeShiftId, dbClient);
   return conflicts.length > 0
     ? { ok: false, reason: 'overlap', conflicts }
     : { ok: true, conflicts: [] };

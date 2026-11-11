@@ -27,7 +27,7 @@ export function computeGateWindow(scheduledDeparture, aircraftSizeClass) {
 // given window. We over-fetch with a generous SQL pre-filter (anything
 // within +/- 3 hours of departure) then compute exact overlap in JS,
 // since each candidate flight has its own buffer size.
-async function findCandidateFlights(gateId, windowStart, windowEnd, excludeFlightId = null) {
+async function findCandidateFlights(gateId, windowStart, windowEnd, excludeFlightId = null, dbClient = pool) {
   const params = [gateId, windowStart, windowEnd];
   let query = `
     SELECT f.id, f.flight_number, f.scheduled_departure, f.gate_id, at.size_class
@@ -42,15 +42,15 @@ async function findCandidateFlights(gateId, windowStart, windowEnd, excludeFligh
     params.push(excludeFlightId);
     query += ` AND f.id <> $${params.length}`;
   }
-  const { rows } = await pool.query(query, params);
+  const { rows } = await dbClient.query(query, params);
   return rows;
 }
 
-export async function checkGateConflict(gateId, windowStart, windowEnd, excludeFlightId = null) {
+export async function checkGateConflict(gateId, windowStart, windowEnd, excludeFlightId = null, dbClient = pool) {
   if (!(new Date(windowStart) < new Date(windowEnd))) {
     return { ok: false, reason: 'invalid_range', conflicts: [] };
   }
-  const candidates = await findCandidateFlights(gateId, windowStart, windowEnd, excludeFlightId);
+  const candidates = await findCandidateFlights(gateId, windowStart, windowEnd, excludeFlightId, dbClient);
 
   const conflicts = candidates.filter((c) => {
     const theirWindow = computeGateWindow(c.scheduled_departure, c.size_class);

@@ -10,8 +10,8 @@ import { computeGateWindow, checkGateConflict } from './gateConflict.js';
 // them — a simple greedy heuristic, not a true optimizer, and that
 // trade-off is worth naming explicitly in the report (see architecture
 // doc's note on gate-assignment optimization as a stretch goal).
-export async function suggestGate(originAirportId, aircraftSizeClass, scheduledDeparture, excludeFlightId = null) {
-  const { rows: gates } = await pool.query(
+export async function suggestGate(originAirportId, aircraftSizeClass, scheduledDeparture, excludeFlightId = null, dbClient = pool) {
+  const { rows: gates } = await dbClient.query(
     `SELECT id, code, size_class FROM gate
      WHERE airport_id = $1 AND status = 'available'
      ORDER BY
@@ -27,7 +27,7 @@ export async function suggestGate(originAirportId, aircraftSizeClass, scheduledD
   const { start, end } = computeGateWindow(scheduledDeparture, aircraftSizeClass);
 
   for (const gate of compatible) {
-    const result = await checkGateConflict(gate.id, start, end, excludeFlightId);
+    const result = await checkGateConflict(gate.id, start, end, excludeFlightId, dbClient);
     if (result.ok) {
       return { gate, reason: null };
     }
