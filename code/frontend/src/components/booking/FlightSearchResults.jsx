@@ -132,3 +132,4 @@ export default function FlightSearchResults({ flights, origin, destination, seat
     </div>
   );
 }
+

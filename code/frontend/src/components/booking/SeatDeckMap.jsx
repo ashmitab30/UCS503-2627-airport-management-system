@@ -216,3 +216,4 @@ function SeatButton({ seatObj, selectedSeat, onSelectSeat }) {
     </button>
   );
 }
+
