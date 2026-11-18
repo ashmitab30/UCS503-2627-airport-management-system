@@ -11,6 +11,9 @@ describe('Week 5: IATA Delays, Cascade Forward & Turnaround Timestamps Tests', (
   let testUser;
 
   beforeAll(async () => {
+    // Cleanup any lingering test flights from previous runs
+    await pool.query("DELETE FROM flight WHERE flight_number LIKE 'W5-%'");
+
     // 1. Fetch test airports
     const apRes = await pool.query('SELECT id FROM airport ORDER BY id LIMIT 2');
     airportA = apRes.rows[0].id;
@@ -30,9 +33,10 @@ describe('Week 5: IATA Delays, Cascade Forward & Turnaround Timestamps Tests', (
   });
 
   afterAll(async () => {
-    // Cleanup created test delay logs and user
+    // Cleanup created test delay logs, flights, and user
     if (testUser) {
       await pool.query('DELETE FROM delay_log WHERE logged_by = $1', [testUser.id]);
+      await pool.query("DELETE FROM flight WHERE flight_number LIKE 'W5-%'");
       await pool.query('DELETE FROM "user" WHERE id = $1', [testUser.id]);
     }
   });

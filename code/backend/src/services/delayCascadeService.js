@@ -16,6 +16,7 @@
  */
 
 import { pool } from '../db/pool.js';
+import { reEvaluateConnectionsForFlight } from './connectionService.js';
 
 export const IATA_REASON_CODES = ['WX', 'TECH', 'ATC', 'LATE_INBOUND', 'GROUND', 'SEC', 'CREW'];
 const TURNAROUND_BUFFER_MINUTES = 90;
@@ -143,6 +144,14 @@ export async function logFlightDelayAndCascade({ flightId, delayMinutes, reasonC
         bleedthroughMinutes: bleedthrough,
         logId: cascadeLogRows[0].id,
       });
+    }
+
+    // 7. Re-evaluate connecting passenger itineraries impacted by primary or cascaded delays
+    const impactedFlightIds = [flightId, ...cascadeResults.map((c) => c.flightId)];
+    const connectionUpdates = [];
+    for (const fId of impactedFlightIds) {
+      const updated = await reEvaluateConnectionsForFlight(fId, { client, io });
+      connectionUpdates.push(...updated);
     }
 
     await client.query('COMMIT');

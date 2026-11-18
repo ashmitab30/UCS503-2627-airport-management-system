@@ -22,6 +22,7 @@ import { resourceAssignmentsRouter } from './routes/resourceAssignments.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { emergenciesRouter } from './routes/emergencies.js';
 import { trackingRouter } from './routes/tracking.js';
+import { connectionsRouter } from './routes/connections.js';
 
 // Production safety verification: refuse to start with missing or default secret
 if (process.env.NODE_ENV === 'production') {
@@ -87,6 +88,7 @@ app.use('/resource-assignments', resourceAssignmentsRouter);
 app.use('/bookings', bookingsRouter);
 app.use('/emergencies', emergenciesRouter);
 app.use('/tracking', trackingRouter);
+app.use('/connections', connectionsRouter);
 
 app.get('/', (req, res) => {
   res.json({
