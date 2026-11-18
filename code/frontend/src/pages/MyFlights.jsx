@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useSocket, LiveStatusPill } from '../context/SocketContext.jsx';
 import { apiFetch } from '../api/client.js';
 import { styles } from '../styles.js';
 import SiteHeader from './SiteHeader.jsx';
@@ -10,6 +11,7 @@ const PIPELINE_LABELS = { requested: 'Submitted', assigned: 'Assigned', in_progr
 
 export default function MyFlights() {
   const { token } = useAuth();
+  const { socket } = useSocket();
   const [bookings, setBookings] = useState(null);
   const [error, setError] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
@@ -26,6 +28,26 @@ export default function MyFlights() {
   useEffect(() => {
     loadBookings();
   }, [token]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onEvent = () => loadBookings();
+    socket.on('booking:cancelled', onEvent);
+    socket.on('flight:delayed', onEvent);
+    socket.on('delay:cascade', onEvent);
+    socket.on('flight:gate_changed', onEvent);
+    socket.on('flight:status_updated', onEvent);
+    socket.on('connection:status_changed', onEvent);
+
+    return () => {
+      socket.off('booking:cancelled', onEvent);
+      socket.off('flight:delayed', onEvent);
+      socket.off('delay:cascade', onEvent);
+      socket.off('flight:gate_changed', onEvent);
+      socket.off('flight:status_updated', onEvent);
+      socket.off('connection:status_changed', onEvent);
+    };
+  }, [socket]);
 
   const handleCheckIn = async (bookingId) => {
     setBusyId(bookingId);
@@ -104,7 +126,8 @@ export default function MyFlights() {
       </div>
 
       <main style={{ maxWidth: 960, width: '100%', margin: '-30px auto 4rem', padding: '0 24px', flex: 1, position: 'relative', zIndex: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <LiveStatusPill />
           <Link to="/book" className="btn-primary-aero" style={{ padding: '10px 22px', fontSize: '13.5px' }}>
             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
             <span>Book New Flight</span>

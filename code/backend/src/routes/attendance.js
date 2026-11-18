@@ -105,3 +105,29 @@ attendanceRouter.get('/', authenticate, requireRole('admin', 'ops_manager'), asy
     res.status(500).json({ error: 'Could not list attendance' });
   }
 });
+
+// GET /attendance/mine — a staff member's own attendance history (most recent first),
+// joined with the shift it belongs to. Also tells the UI whether they are
+// currently clocked in, so that state survives a page reload.
+attendanceRouter.get('/mine', authenticate, requireAuth, async (req, res) => {
+  try {
+    const employeeId = await getEmployeeIdForUser(req.user.id);
+    if (!employeeId) {
+      return res.status(404).json({ error: 'No employee record linked to this account' });
+    }
+    const { rows } = await pool.query(
+      `SELECT a.id, a.shift_id, a.clock_in, a.clock_out,
+              s.start_time, s.end_time, s.area_assigned
+       FROM attendance a
+       LEFT JOIN shift s ON s.id = a.shift_id
+       WHERE a.employee_id = $1
+       ORDER BY a.clock_in DESC NULLS LAST
+       LIMIT 100`,
+      [employeeId]
+    );
+    res.json({ attendance: rows, open_attendance: rows.find((r) => r.clock_in && !r.clock_out) || null });
+  } catch (err) {
+    console.error('my attendance error:', err.message);
+    res.status(500).json({ error: 'Could not load your attendance' });
+  }
+});

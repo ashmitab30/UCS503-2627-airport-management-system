@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { pool } from '../db/pool.js';
 import { hashPassword, comparePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { authenticate, requireAuth } from '../middleware/auth.js';
+import { validate } from '../middleware/validate.js';
 
 export const authRouter = Router();
 
@@ -93,3 +95,40 @@ authRouter.get('/me', authenticate, requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Could not fetch profile' });
   }
 });
+
+const changePasswordSchema = z.object({
+  current_password: z.string().min(1, 'Current password is required'),
+  new_password: z
+    .string()
+    .min(8, 'New password must be at least 8 characters')
+    .max(128, 'New password is too long'),
+});
+
+// POST /auth/change-password — any logged-in user. Needed because staff accounts
+// are created with a temporary password that the employee must be able to replace.
+authRouter.post(
+  '/change-password',
+  authenticate,
+  requireAuth,
+  validate({ body: changePasswordSchema }),
+  async (req, res) => {
+    const { current_password, new_password } = req.body;
+    try {
+      const { rows } = await pool.query('SELECT password_hash FROM "user" WHERE id = $1', [req.user.id]);
+      if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+      const ok = await comparePassword(current_password, rows[0].password_hash);
+      if (!ok) return res.status(400).json({ error: 'Current password is incorrect' });
+      if (current_password === new_password) {
+        return res.status(400).json({ error: 'New password must be different from the current one' });
+      }
+
+      const newHash = await hashPassword(new_password);
+      await pool.query('UPDATE "user" SET password_hash = $1 WHERE id = $2', [newHash, req.user.id]);
+      res.json({ message: 'Password updated' });
+    } catch (err) {
+      console.error('change password error:', err.message);
+      res.status(500).json({ error: 'Could not change password' });
+    }
+  }
+);

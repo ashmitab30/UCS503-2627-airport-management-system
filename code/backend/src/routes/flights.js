@@ -7,6 +7,7 @@ import { computeGateWindow, checkGateConflict } from '../services/gateConflict.j
 import { suggestGate } from '../services/gateAssignment.js';
 import { initTurnaroundChecklist } from '../services/turnaround.js';
 import { generateSeatsForFlight } from '../services/seatService.js';
+import { logFlightDelayAndCascade, IATA_REASON_CODES } from '../services/delayCascadeService.js';
 import { io } from '../index.js';
 import {
   ADVISORY_LOCK_DOMAINS,
@@ -339,6 +340,8 @@ flightsRouter.patch(
 
       if (io) {
         io.emit('flight:gate_reassigned', { flightId, gateId });
+        io.to('ops_feed').emit('flight:gate_changed', { flightId, gateId, gateCode: gate.code });
+        io.to(`flight:${flightId}`).emit('flight:gate_changed', { flightId, gateId, gateCode: gate.code });
       }
 
       res.json({ flight: rows[0] });
@@ -451,6 +454,15 @@ flightsRouter.patch(
         });
         if (status === 'cancelled') {
           io.emit('flight:cancelled', { flightId, cascade: cascadeReport });
+          if (cascadeReport && cascadeReport.bookingsCancelled > 0) {
+            for (const b of cancelledBookings.rows) {
+              io.to(`user:${b.user_id}`).emit('booking:cancelled', {
+                bookingId: b.id,
+                flightId,
+                reason: 'Flight cancelled by operations',
+              });
+            }
+          }
         }
       }
 
@@ -464,3 +476,65 @@ flightsRouter.patch(
     }
   }
 );
+
+const delayFlightSchema = z.object({
+  delay_minutes: z.number().int().positive('delay_minutes must be a positive integer'),
+  reason_code: z.enum(['WX', 'TECH', 'ATC', 'LATE_INBOUND', 'GROUND', 'SEC', 'CREW']),
+  notes: z.string().optional(),
+});
+
+// POST /flights/:id/delay — admin, ops_manager. Logs flight delay and triggers cascade.
+flightsRouter.post(
+  '/:id/delay',
+  authenticate,
+  requireRole(...ADMIN_OPS_ROLES),
+  validate({ body: delayFlightSchema }),
+  async (req, res) => {
+    const flightId = parseInt(req.params.id, 10);
+    if (isNaN(flightId)) return res.status(400).json({ error: 'Invalid flight ID' });
+
+    const { delay_minutes, reason_code, notes } = req.body;
+    try {
+      const result = await logFlightDelayAndCascade({
+        flightId,
+        delayMinutes: delay_minutes,
+        reasonCode: reason_code,
+        notes,
+        loggedBy: req.user.id,
+        io,
+      });
+
+      if (!result.ok) {
+        return res.status(result.status || 400).json({ error: result.error });
+      }
+
+      res.json(result);
+    } catch (err) {
+      console.error('delay flight error:', err.message);
+      res.status(err.status || 500).json({ error: err.message || 'Could not log flight delay' });
+    }
+  }
+);
+
+// GET /flights/:id/delays — authenticated users. Returns delay audit logs for the flight.
+flightsRouter.get('/:id/delays', authenticate, async (req, res) => {
+  const flightId = parseInt(req.params.id, 10);
+  if (isNaN(flightId)) return res.status(400).json({ error: 'Invalid flight ID' });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT dl.id, dl.flight_id, dl.delay_minutes, dl.reason_code, dl.notes,
+              dl.logged_by, dl.logged_at, dl.is_cascade, dl.caused_by_log_id,
+              u.name AS logged_by_name
+       FROM delay_log dl
+       LEFT JOIN "user" u ON u.id = dl.logged_by
+       WHERE dl.flight_id = $1
+       ORDER BY dl.logged_at DESC, dl.id DESC`,
+      [flightId]
+    );
+    res.json({ delay_logs: rows });
+  } catch (err) {
+    console.error('get flight delays error:', err.message);
+    res.status(500).json({ error: 'Could not fetch delay logs' });
+  }
+});

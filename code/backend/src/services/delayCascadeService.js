@@ -16,7 +16,6 @@
  */
 
 import { pool } from '../db/pool.js';
-import { FLIGHT_STATUS_TRANSITIONS } from '../constants/index.js';
 
 export const IATA_REASON_CODES = ['WX', 'TECH', 'ATC', 'LATE_INBOUND', 'GROUND', 'SEC', 'CREW'];
 const TURNAROUND_BUFFER_MINUTES = 90;
@@ -33,10 +32,14 @@ const TURNAROUND_BUFFER_MINUTES = 90;
  */
 export async function logFlightDelayAndCascade({ flightId, delayMinutes, reasonCode, notes, loggedBy, io } = {}) {
   if (!IATA_REASON_CODES.includes(reasonCode)) {
-    throw new Object.assign(new Error(`Invalid reason code: ${reasonCode}`), { status: 400 });
+    const err = new Error(`Invalid reason code: ${reasonCode}`);
+    err.status = 400;
+    throw err;
   }
   if (!Number.isInteger(delayMinutes) || delayMinutes <= 0) {
-    throw new Object.assign(new Error('delayMinutes must be a positive integer'), { status: 400 });
+    const err = new Error('delayMinutes must be a positive integer');
+    err.status = 400;
+    throw err;
   }
 
   const client = await pool.connect();
@@ -80,11 +83,11 @@ export async function logFlightDelayAndCascade({ flightId, delayMinutes, reasonC
       [newEstDep, newEstArr, flightId]
     );
 
-    // 5. Log the primary delay
+    // 5. Log the primary delay (populating both legacy columns minutes/timestamp and new delay_minutes/logged_at)
     const { rows: logRows } = await client.query(
       `INSERT INTO delay_log
-         (flight_id, delay_minutes, reason_code, notes, logged_by, logged_at, is_cascade)
-       VALUES ($1, $2, $3, $4, $5, now(), FALSE)
+         (flight_id, minutes, delay_minutes, reason_code, notes, logged_by, timestamp, logged_at, is_cascade)
+       VALUES ($1, $2, $2, $3, $4, $5, now(), now(), FALSE)
        RETURNING id`,
       [flightId, delayMinutes, reasonCode, notes ?? null, loggedBy ?? null]
     );
@@ -93,24 +96,24 @@ export async function logFlightDelayAndCascade({ flightId, delayMinutes, reasonC
     // 6. Find downstream flights (same aircraft OR same gate) within the turnaround window
     const windowEnd = new Date(newEstArr.getTime() + TURNAROUND_BUFFER_MINUTES * 60_000);
     const { rows: downstreamFlights } = await client.query(
-      `SELECT id, flight_number, estimated_departure, estimated_arrival, status
+      `SELECT id, flight_number, estimated_departure, estimated_arrival, scheduled_departure, status
          FROM flight
         WHERE id <> $1
           AND status NOT IN ('cancelled', 'arrived')
-          AND estimated_departure > $2
-          AND estimated_departure < $3
+          AND estimated_departure >= $2
+          AND estimated_departure <= $3
           AND (aircraft_type_id = $4 OR gate_id = $5)
         ORDER BY estimated_departure ASC
         FOR UPDATE`,
-      [flightId, newEstArr, windowEnd, flight.aircraft_type_id, flight.gate_id]
+      [flightId, prevEstArr, windowEnd, flight.aircraft_type_id, flight.gate_id]
     );
 
     const cascadeResults = [];
 
     for (const downstream of downstreamFlights) {
       const dstEstDep = downstream.estimated_departure ?? downstream.scheduled_departure;
-      const slack = (new Date(dstEstDep).getTime() - newEstArr.getTime()) / 60_000; // minutes
-      const bleedthrough = Math.max(0, delayMinutes - slack);
+      const slack = (new Date(dstEstDep).getTime() - new Date(prevEstArr).getTime()) / 60_000; // minutes
+      const bleedthrough = Math.round(Math.max(0, delayMinutes - slack));
       if (bleedthrough <= 0) continue;
 
       const newDstDep = new Date(new Date(dstEstDep).getTime() + bleedthrough * 60_000);
@@ -128,8 +131,8 @@ export async function logFlightDelayAndCascade({ flightId, delayMinutes, reasonC
 
       const { rows: cascadeLogRows } = await client.query(
         `INSERT INTO delay_log
-           (flight_id, delay_minutes, reason_code, notes, logged_by, logged_at, is_cascade, caused_by_log_id)
-         VALUES ($1, $2, 'LATE_INBOUND', $3, $4, now(), TRUE, $5)
+           (flight_id, minutes, delay_minutes, reason_code, notes, logged_by, timestamp, logged_at, is_cascade, caused_by_log_id)
+         VALUES ($1, $2, $2, 'LATE_INBOUND', $3, $4, now(), now(), TRUE, $5)
          RETURNING id`,
         [downstream.id, bleedthrough, `Cascade from ${flight.flight_number}`, loggedBy ?? null, primaryLogId]
       );

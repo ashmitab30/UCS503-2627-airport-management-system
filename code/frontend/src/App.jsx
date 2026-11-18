@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { SocketProvider } from './context/SocketContext.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -20,12 +21,30 @@ import AdminAssistance from './pages/admin/AdminAssistance.jsx';
 import AdminEmergencies from './pages/admin/AdminEmergencies.jsx';
 import AdminBookings from './pages/admin/AdminBookings.jsx';
 import AdminPassengers from './pages/admin/AdminPassengers.jsx';
+import StaffLayout from './pages/staff/StaffLayout.jsx';
+import StaffHome from './pages/staff/StaffHome.jsx';
+import StaffTurnaround from './pages/staff/StaffTurnaround.jsx';
+import StaffShifts from './pages/staff/StaffShifts.jsx';
+import StaffAssistance from './pages/staff/StaffAssistance.jsx';
+import StaffEmergencies from './pages/staff/StaffEmergencies.jsx';
+import StaffPassword from './pages/staff/StaffPassword.jsx';
 import { styles } from './styles.js';
+
+// Roles that use the staff portal (admin / ops_manager use /admin instead).
+const STAFF_PORTAL_ROLES = ['ground_crew', 'security', 'medical'];
+
+// /dashboard sends staff-portal roles to /staff; everyone else keeps the existing dashboard.
+function DashboardRoute() {
+  const { user } = useAuth();
+  if (user && STAFF_PORTAL_ROLES.includes(user.role)) return <Navigate to="/staff" replace />;
+  return <Dashboard />;
+}
 
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <SocketProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/" element={<HealthCheck />} />
           <Route path="/login" element={<Login />} />
@@ -34,7 +53,7 @@ export default function App() {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <DashboardRoute />
               </ProtectedRoute>
             }
           />
@@ -71,6 +90,35 @@ export default function App() {
             }
           />
           <Route
+            path="/staff"
+            element={
+              <ProtectedRoute roles={STAFF_PORTAL_ROLES}>
+                <StaffLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<StaffHome />} />
+            <Route
+              path="turnaround"
+              element={
+                <ProtectedRoute roles={['ground_crew']}>
+                  <StaffTurnaround />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="assistance"
+              element={
+                <ProtectedRoute roles={['ground_crew', 'medical']}>
+                  <StaffAssistance />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="emergencies" element={<StaffEmergencies />} />
+            <Route path="shifts" element={<StaffShifts />} />
+            <Route path="password" element={<StaffPassword />} />
+          </Route>
+          <Route
             path="/admin"
             element={
               <ProtectedRoute roles={['admin', 'ops_manager']}>
@@ -99,7 +147,8 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
-    </AuthProvider>
+    </SocketProvider>
+  </AuthProvider>
   );
 }
 

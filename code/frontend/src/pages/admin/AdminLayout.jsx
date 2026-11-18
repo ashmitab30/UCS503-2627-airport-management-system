@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { LiveStatusPill } from '../../context/SocketContext.jsx';
 import { apiFetch } from '../../api/client.js';
 
 export default function AdminLayout() {
@@ -214,6 +215,7 @@ export default function AdminLayout() {
 
           {/* Quick Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <LiveStatusPill />
             <button
               type="button"
               onClick={() => setEmergencyOpen(true)}
