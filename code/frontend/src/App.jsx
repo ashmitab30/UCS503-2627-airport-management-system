@@ -21,6 +21,7 @@ import AdminAssistance from './pages/admin/AdminAssistance.jsx';
 import AdminEmergencies from './pages/admin/AdminEmergencies.jsx';
 import AdminBookings from './pages/admin/AdminBookings.jsx';
 import AdminPassengers from './pages/admin/AdminPassengers.jsx';
+import AdminConnections from './pages/admin/AdminConnections.jsx';
 import StaffLayout from './pages/staff/StaffLayout.jsx';
 import StaffHome from './pages/staff/StaffHome.jsx';
 import StaffTurnaround from './pages/staff/StaffTurnaround.jsx';
@@ -143,6 +144,7 @@ export default function App() {
             <Route path="passengers" element={<AdminPassengers />} />
             <Route path="assistance" element={<AdminAssistance />} />
             <Route path="bookings" element={<AdminBookings />} />
+            <Route path="connections" element={<AdminConnections />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

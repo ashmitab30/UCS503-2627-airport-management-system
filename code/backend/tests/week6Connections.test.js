@@ -16,14 +16,18 @@ describe('Week 6: Connecting Flights & Rebooking Tests', () => {
     // Cleanup any lingering test data
     await pool.query("DELETE FROM flight WHERE flight_number LIKE 'W6-%'");
 
-    // Fetch 3 airports
-    const apRes = await pool.query('SELECT id FROM airport ORDER BY id LIMIT 3');
-    airportA = apRes.rows[0].id;
-    airportB = apRes.rows[1].id; // transit hub
-    airportC = apRes.rows[2].id;
+    // Fetch 3 airports: DEL -> BOM (hub) -> BLR
+    const del = await pool.query("SELECT id FROM airport WHERE code = 'DEL'");
+    const bom = await pool.query("SELECT id FROM airport WHERE code = 'BOM'");
+    const blr = await pool.query("SELECT id FROM airport WHERE code = 'BLR'");
+    airportA = del.rows[0].id;
+    airportB = bom.rows[0].id; // transit hub BOM (MCT = 45)
+    airportC = blr.rows[0].id;
 
-    // Set MCT on hub airport B to 60 minutes
-    await pool.query('UPDATE airport SET min_connection_minutes = 60 WHERE id = $1', [airportB]);
+    // Ensure realistic MCTs
+    await pool.query("UPDATE airport SET min_connection_minutes = 45 WHERE code = 'BOM'");
+    await pool.query("UPDATE airport SET min_connection_minutes = 60 WHERE code = 'DEL'");
+    await pool.query("UPDATE airport SET min_connection_minutes = 40 WHERE code = 'BLR'");
 
     // Fetch aircraft type
     const actRes = await pool.query('SELECT id FROM aircraft_type LIMIT 1');
@@ -39,6 +43,9 @@ describe('Week 6: Connecting Flights & Rebooking Tests', () => {
   });
 
   afterAll(async () => {
+    await pool.query("UPDATE airport SET min_connection_minutes = 45 WHERE code = 'BOM'");
+    await pool.query("UPDATE airport SET min_connection_minutes = 60 WHERE code = 'DEL'");
+    await pool.query("UPDATE airport SET min_connection_minutes = 40 WHERE code = 'BLR'");
     if (testUser) {
       await pool.query('DELETE FROM connection WHERE passenger_id = $1', [testUser.id]);
       await pool.query('DELETE FROM booking WHERE passenger_id = $1 OR user_id = $1', [testUser.id]);
@@ -191,31 +198,31 @@ describe('Week 6: Connecting Flights & Rebooking Tests', () => {
     });
     expect(conn.status).toBe('on_track');
 
-    // Incur 30 min delay on inbound flight:
-    // New connection time: 75 - 30 = 45 mins (< 60m MCT -> at_risk)
+    // Incur 40 min delay on inbound flight:
+    // New connection time: 75 - 40 = 35 mins (< 45m BOM MCT -> at_risk)
     await logFlightDelayAndCascade({
       flightId: inboundId,
-      delayMinutes: 30,
+      delayMinutes: 40,
       reasonCode: 'ATC',
       loggedBy: testUser.id,
     });
 
     const { rows: reCheckedConn } = await pool.query('SELECT status, actual_connection_minutes FROM connection WHERE id = $1', [conn.id]);
     expect(reCheckedConn[0].status).toBe('at_risk');
-    expect(reCheckedConn[0].actual_connection_minutes).toBe(45);
+    expect(reCheckedConn[0].actual_connection_minutes).toBe(35);
 
-    // Incur additional 30 min delay on inbound (total 60 min delay):
-    // New connection time: 75 - 60 = 15 mins (< 20m gate close -> missed)
+    // Incur additional 25 min delay on inbound (total 65 min delay):
+    // New connection time: 75 - 65 = 10 mins (< 20m gate close -> missed)
     await logFlightDelayAndCascade({
       flightId: inboundId,
-      delayMinutes: 30,
+      delayMinutes: 25,
       reasonCode: 'WX',
       loggedBy: testUser.id,
     });
 
     const { rows: missedConn } = await pool.query('SELECT status, actual_connection_minutes FROM connection WHERE id = $1', [conn.id]);
     expect(missedConn[0].status).toBe('missed');
-    expect(missedConn[0].actual_connection_minutes).toBe(15);
+    expect(missedConn[0].actual_connection_minutes).toBe(10);
   });
 
   test('Rebooking options & transactional rebooking: suggests alternative flights and executes atomic swap', async () => {
@@ -322,5 +329,28 @@ describe('Week 6: Connecting Flights & Rebooking Tests', () => {
         userId: testUser.id,
       })
     ).rejects.toThrow(/already booked on this flight/i);
+  });
+
+  test('Admin query & metrics: correctly aggregates monitored, at_risk, missed and calculates deficits', async () => {
+    const { rows: metrics } = await pool.query(
+      `SELECT
+         COUNT(*)::int AS monitored,
+         COUNT(*) FILTER (WHERE status = 'at_risk')::int AS at_risk,
+         COUNT(*) FILTER (WHERE status = 'missed')::int AS missed
+       FROM connection`
+    );
+
+    expect(metrics[0].monitored).toBeGreaterThanOrEqual(1);
+    expect(metrics[0].at_risk).toBeGreaterThanOrEqual(0);
+    expect(metrics[0].missed).toBeGreaterThanOrEqual(0);
+
+    // Verify BOM, DEL, BLR have realistic MCT values configured
+    const { rows: airports } = await pool.query(
+      `SELECT code, min_connection_minutes FROM airport WHERE code IN ('BOM', 'DEL', 'BLR')`
+    );
+    const mctMap = Object.fromEntries(airports.map((a) => [a.code, a.min_connection_minutes]));
+    expect(mctMap['BOM']).toBe(45);
+    expect(mctMap['DEL']).toBe(60);
+    expect(mctMap['BLR']).toBe(40);
   });
 });
