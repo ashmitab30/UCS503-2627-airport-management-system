@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../api/client.js';
 import { styles, colors, statusBadgeStyle } from '../styles.js';
+import { LiveStatusPill } from '../context/SocketContext.jsx';
 import { TurnaroundBoard } from './OpsCore.jsx';
 import AssistanceQueue from './AssistanceQueue.jsx';
 import EmergencyBoard from './EmergencyBoard.jsx';
@@ -80,6 +81,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <LiveStatusPill />
             <div className="zulu-timer-chip">
               <span className="pulse-radar-dot" />
               <div style={{ display: 'flex', flexDirection: 'column' }}>

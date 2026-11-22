@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { LiveStatusPill } from '../../context/SocketContext.jsx';
 import { apiFetch } from '../../api/client.js';
 
 export default function AdminLayout() {
@@ -55,7 +56,8 @@ export default function AdminLayout() {
   // Derive current page title for breadcrumbs
   const path = location.pathname;
   let pageTitle = 'Dashboard';
-  if (path.includes('flights')) pageTitle = 'Flights Operations';
+  if (path.includes('connections')) pageTitle = 'Connections at Risk';
+  else if (path.includes('flights')) pageTitle = 'Flights Operations';
   else if (path.includes('gates')) pageTitle = 'Gates & Terminals';
   else if (path.includes('resources')) pageTitle = 'Resources Registry';
   else if (path.includes('emergencies')) pageTitle = 'Emergencies Hub';
@@ -128,6 +130,10 @@ export default function AdminLayout() {
             <NavLink to="/admin" end className={navClass}>
               <span className="material-symbols-outlined">dashboard</span>
               <span>Dashboard</span>
+            </NavLink>
+            <NavLink to="/admin/connections" className={navClass}>
+              <span className="material-symbols-outlined">swap_horiz</span>
+              <span>Connections at Risk</span>
             </NavLink>
 
             <div className="admin-nav-category">Operations</div>
@@ -214,6 +220,7 @@ export default function AdminLayout() {
 
           {/* Quick Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <LiveStatusPill />
             <button
               type="button"
               onClick={() => setEmergencyOpen(true)}

@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import http from 'http';
 import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 
 import { healthRouter } from './routes/health.js';
@@ -21,6 +22,7 @@ import { resourceAssignmentsRouter } from './routes/resourceAssignments.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { emergenciesRouter } from './routes/emergencies.js';
 import { trackingRouter } from './routes/tracking.js';
+import { connectionsRouter } from './routes/connections.js';
 
 // Production safety verification: refuse to start with missing or default secret
 if (process.env.NODE_ENV === 'production') {
@@ -86,6 +88,7 @@ app.use('/resource-assignments', resourceAssignmentsRouter);
 app.use('/bookings', bookingsRouter);
 app.use('/emergencies', emergenciesRouter);
 app.use('/tracking', trackingRouter);
+app.use('/connections', connectionsRouter);
 
 app.get('/', (req, res) => {
   res.json({
@@ -111,9 +114,45 @@ export const io = new Server(server, {
   },
 });
 
+// Authenticated Socket.IO middleware — verifies JWT from handshake.auth.token
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    socket.emit('auth_error', { error: 'Authentication failed' });
+    return next(new Error('Authentication failed'));
+  }
+  try {
+    const user = jwt.verify(token, process.env.JWT_SECRET || 'my_local_dev_secret_123');
+    socket.user = user;
+    next();
+  } catch {
+    socket.emit('auth_error', { error: 'Authentication failed' });
+    return next(new Error('Authentication failed'));
+  }
+});
+
 io.on('connection', (socket) => {
-  console.log(`socket connected: ${socket.id}`);
-  socket.on('disconnect', () => console.log(`socket disconnected: ${socket.id}`));
+  const user = socket.user;
+  if (user?.id) {
+    socket.join(`user:${user.id}`);
+  }
+  if (user?.role) {
+    socket.join(`role:${user.role}`);
+    if (['ops_manager', 'admin', 'ground_crew', 'security', 'medical'].includes(user.role)) {
+      socket.join('ops_feed');
+    }
+  }
+
+  socket.on('subscribe_flight', (flightId) => {
+    if (flightId) socket.join(`flight:${flightId}`);
+  });
+  socket.on('unsubscribe_flight', (flightId) => {
+    if (flightId) socket.leave(`flight:${flightId}`);
+  });
+
+  socket.on('disconnect', () => {
+    // client disconnected
+  });
 });
 
 const PORT = process.env.PORT || 4000;
