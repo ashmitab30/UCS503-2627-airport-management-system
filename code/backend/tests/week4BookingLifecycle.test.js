@@ -55,6 +55,14 @@ describe('Week 4: Booking Lifecycle, Holds, Check-in & Cancellation Tests', () =
     testSeats = [s1.rows[0], s2.rows[0], s3.rows[0]];
   });
 
+  afterEach(async () => {
+    if (testFlight) {
+      await pool.query('DELETE FROM payment WHERE booking_id IN (SELECT id FROM booking WHERE flight_id = $1)', [testFlight.id]);
+      await pool.query('DELETE FROM booking WHERE flight_id = $1', [testFlight.id]);
+      await pool.query('UPDATE seat SET is_booked = false WHERE flight_id = $1', [testFlight.id]);
+    }
+  });
+
   afterAll(async () => {
     if (testFlight) {
       await pool.query('DELETE FROM payment WHERE booking_id IN (SELECT id FROM booking WHERE flight_id = $1)', [testFlight.id]);

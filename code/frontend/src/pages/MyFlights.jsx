@@ -254,6 +254,10 @@ export default function MyFlights({
     } catch (err) {
       if (err.detail?.code === 'FLIGHT_DEPARTED' || err.message?.includes('departed')) {
         setError('This flight departed while your seat was held and can no longer be confirmed.');
+      } else if (err.detail?.code === 'DUPLICATE_BOOKING' || err.detail?.code === 'TIME_CONFLICT') {
+        const flightNum = err.detail?.conflicting_flight_number;
+        const suffix = flightNum && !err.message?.includes(flightNum) ? ` (Conflicting flight: ${flightNum})` : '';
+        setError(`${err.message}${suffix}`);
       } else {
         setError(err.message);
       }
@@ -397,7 +401,7 @@ export default function MyFlights({
         )}
 
         {error && (
-          <div style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid #ef4444', color: '#b91c1c', padding: '12px 18px', borderRadius: '12px', marginBottom: '20px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div role="alert" style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid #ef4444', color: '#b91c1c', padding: '12px 18px', borderRadius: '12px', marginBottom: '20px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>error</span>
             <span>{error}</span>
           </div>

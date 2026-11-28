@@ -79,6 +79,7 @@ export const ADVISORY_LOCK_DOMAINS = {
   RESOURCE: 3,
   PARKING_SLOT: 4,
   SEAT: 5,
+  PASSENGER_BOOKING: 6,
 };
 
 // Baggage management constants

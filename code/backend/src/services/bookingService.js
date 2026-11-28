@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { pool } from '../db/pool.js';
-import { SEAT_CLASS_MULTIPLIERS, ASSISTANCE_TYPES, ADMIN_OPS_ROLES, BOARDING_GROUPS } from '../constants/index.js';
+import { SEAT_CLASS_MULTIPLIERS, ASSISTANCE_TYPES, ADMIN_OPS_ROLES, BOARDING_GROUPS, ADVISORY_LOCK_DOMAINS } from '../constants/index.js';
 import { hasDeparted } from './flightTime.js';
 
 export const HOLD_EXPIRY_MINUTES = 10;
@@ -167,6 +167,123 @@ async function resolvePassengerId(client, userId, passengerDetails) {
 }
 
 /**
+ * Ensures the user has no duplicate or time-conflicting active booking
+ * for the target flight. Must be called inside a transaction holding
+ * pg_advisory_xact_lock(ADVISORY_LOCK_DOMAINS.PASSENGER_BOOKING, userId).
+ *
+ * @param {import('pg').PoolClient} client
+ * @param {number} userId
+ * @param {number} flightId
+ * @param {number|null} [excludeBookingId=null] - Booking ID to exclude (when confirming an existing hold)
+ * @returns {Promise<{ ok: true } | { ok: false, status: number, code?: string, error: string, conflicting_flight_number?: string }>}
+ */
+export async function assertNoPassengerConflict(client, userId, flightId, excludeBookingId = null) {
+  const targetRes = await client.query(
+    `SELECT f.id, f.flight_number, f.origin_id, f.dest_id,
+            f.scheduled_departure, f.scheduled_arrival,
+            f.estimated_departure, f.estimated_arrival,
+            COALESCE(orig.min_connection_minutes, 60) AS origin_mct,
+            COALESCE(dest.min_connection_minutes, 60) AS dest_mct
+     FROM flight f
+     LEFT JOIN airport orig ON orig.id = f.origin_id
+     LEFT JOIN airport dest ON dest.id = f.dest_id
+     WHERE f.id = $1`,
+    [flightId]
+  );
+
+  if (targetRes.rows.length === 0) {
+    return { ok: false, status: 404, error: 'Flight not found' };
+  }
+
+  const target = targetRes.rows[0];
+  const targetDep = new Date(target.estimated_departure ?? target.scheduled_departure).getTime();
+  const targetArr = new Date(target.estimated_arrival ?? target.scheduled_arrival).getTime();
+
+  const activeRes = await client.query(
+    `SELECT b.id AS booking_id, b.flight_id, b.status AS booking_status,
+            f.flight_number, f.origin_id, f.dest_id,
+            f.scheduled_departure, f.scheduled_arrival,
+            f.estimated_departure, f.estimated_arrival,
+            COALESCE(dest.min_connection_minutes, 60) AS dest_mct
+     FROM booking b
+     JOIN flight f ON f.id = b.flight_id
+     LEFT JOIN airport dest ON dest.id = f.dest_id
+     WHERE b.user_id = $1
+       AND ($2::int IS NULL OR b.id <> $2)
+       AND (
+         b.status IN ('confirmed', 'checked_in', 'boarded')
+         OR (b.status = 'held' AND (b.held_until IS NULL OR b.held_until >= now()))
+       )`,
+    [userId, excludeBookingId]
+  );
+
+  const duplicate = activeRes.rows.find((b) => b.flight_id === flightId);
+  if (duplicate) {
+    return {
+      ok: false,
+      status: 409,
+      code: 'DUPLICATE_BOOKING',
+      error: `You already have an active booking on flight ${duplicate.flight_number}.`,
+      conflicting_flight_number: duplicate.flight_number,
+    };
+  }
+
+  for (const existing of activeRes.rows) {
+    const exDep = new Date(existing.estimated_departure ?? existing.scheduled_departure).getTime();
+    const exArr = new Date(existing.estimated_arrival ?? existing.scheduled_arrival).getTime();
+
+    if (Number.isNaN(targetDep) || Number.isNaN(targetArr) || Number.isNaN(exDep) || Number.isNaN(exArr)) {
+      continue;
+    }
+
+    // Existing flight arrives at target's origin airport (existing -> target connection)
+    if (existing.dest_id === target.origin_id && exDep <= targetDep) {
+      const gapMinutes = (targetDep - exArr) / 60_000;
+      const mct = Number(existing.dest_mct) || 60;
+      if (gapMinutes < mct) {
+        return {
+          ok: false,
+          status: 409,
+          code: 'TIME_CONFLICT',
+          error: `Flight ${target.flight_number} conflicts with your booking on flight ${existing.flight_number} (minimum connection time is ${mct} minutes).`,
+          conflicting_flight_number: existing.flight_number,
+        };
+      }
+      continue;
+    }
+
+    // Target flight arrives at existing flight's origin airport (target -> existing connection)
+    if (target.dest_id === existing.origin_id && targetDep <= exDep) {
+      const gapMinutes = (exDep - targetArr) / 60_000;
+      const mct = Number(target.dest_mct) || 60;
+      if (gapMinutes < mct) {
+        return {
+          ok: false,
+          status: 409,
+          code: 'TIME_CONFLICT',
+          error: `Flight ${target.flight_number} conflicts with your booking on flight ${existing.flight_number} (minimum connection time is ${mct} minutes).`,
+          conflicting_flight_number: existing.flight_number,
+        };
+      }
+      continue;
+    }
+
+    // Non-connecting flights: overlap if windows intersect
+    if (exDep < targetArr && targetDep < exArr) {
+      return {
+        ok: false,
+        status: 409,
+        code: 'TIME_CONFLICT',
+        error: `Flight ${target.flight_number} overlaps with your existing booking on flight ${existing.flight_number}.`,
+        conflicting_flight_number: existing.flight_number,
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+/**
  * STEP 1: Hold a seat with a timed expiration (e.g. 10 minutes).
  */
 export async function holdSeat(
@@ -178,6 +295,11 @@ export async function holdSeat(
 
   try {
     if (ownsClient) await client.query('BEGIN');
+
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [
+      ADVISORY_LOCK_DOMAINS.PASSENGER_BOOKING,
+      userId,
+    ]);
 
     // Clean up expired holds first
     await cleanupExpiredHolds(client);
@@ -219,6 +341,12 @@ export async function holdSeat(
         error: 'Flight has already departed and cannot be booked',
         code: 'FLIGHT_DEPARTED',
       };
+    }
+
+    const conflict = await assertNoPassengerConflict(client, userId, flightId);
+    if (!conflict.ok) {
+      if (ownsClient) await client.query('ROLLBACK');
+      return conflict;
     }
 
     if (seat.is_booked) {
@@ -297,6 +425,11 @@ export async function confirmHeldBooking({ bookingId, userId, paymentMethod = 'm
   try {
     if (ownsClient) await client.query('BEGIN');
 
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [
+      ADVISORY_LOCK_DOMAINS.PASSENGER_BOOKING,
+      userId,
+    ]);
+
     const bRes = await client.query(
       `SELECT b.id, b.user_id, b.flight_id, b.seat_id, b.status, b.held_until, b.price_cents, b.booking_ref,
               f.scheduled_departure, f.actual_departure, f.status AS flight_status
@@ -361,6 +494,12 @@ export async function confirmHeldBooking({ bookingId, userId, paymentMethod = 'm
       };
     }
 
+    const conflict = await assertNoPassengerConflict(client, userId, booking.flight_id, bookingId);
+    if (!conflict.ok) {
+      if (ownsClient) await client.query('ROLLBACK');
+      return conflict;
+    }
+
     // Confirm booking
     const updateRes = await client.query(
       `UPDATE booking
@@ -401,25 +540,45 @@ export async function confirmHeldBooking({ bookingId, userId, paymentMethod = 'm
  * Direct all-in-one booking execution (backward compatible with Step 0).
  */
 export async function executeBooking(params, dbClient = null) {
-  const holdRes = await holdSeat(params, dbClient);
-  if (!holdRes.ok) return holdRes;
+  const client = dbClient || (await pool.connect());
+  const ownsClient = !dbClient;
 
-  const confirmRes = await confirmHeldBooking(
-    { bookingId: holdRes.booking.id, userId: params.userId },
-    dbClient
-  );
-  if (!confirmRes.ok) return confirmRes;
+  try {
+    if (ownsClient) await client.query('BEGIN');
 
-  return {
-    ok: true,
-    booking: {
-      ...holdRes.booking,
-      status: 'confirmed',
-      amount_paid: (holdRes.booking.price_cents / 100).toFixed(2),
-    },
-    payment: confirmRes.payment,
-    assistance: holdRes.assistance,
-  };
+    const holdRes = await holdSeat(params, client);
+    if (!holdRes.ok) {
+      if (ownsClient) await client.query('ROLLBACK');
+      return holdRes;
+    }
+
+    const confirmRes = await confirmHeldBooking(
+      { bookingId: holdRes.booking.id, userId: params.userId },
+      client
+    );
+    if (!confirmRes.ok) {
+      if (ownsClient) await client.query('ROLLBACK');
+      return confirmRes;
+    }
+
+    if (ownsClient) await client.query('COMMIT');
+
+    return {
+      ok: true,
+      booking: {
+        ...holdRes.booking,
+        status: 'confirmed',
+        amount_paid: (holdRes.booking.price_cents / 100).toFixed(2),
+      },
+      payment: confirmRes.payment,
+      assistance: holdRes.assistance,
+    };
+  } catch (err) {
+    if (ownsClient) await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    if (ownsClient) client.release();
+  }
 }
 
 /**
