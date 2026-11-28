@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { useSocket, LiveStatusPill } from '../../context/SocketContext.jsx';
 import { apiFetch } from '../../api/client.js';
 import { styles } from '../../styles.js';
+import { formatDateTime } from '../../utils/format.js';
 
 const STEP_ORDER = ['deboard', 'clean', 'fuel', 'catering', 'board', 'pushback'];
 const STEP_LABELS = { deboard: 'Deboard', clean: 'Clean', fuel: 'Fuel', catering: 'Catering', board: 'Board', pushback: 'Pushback' };
@@ -116,7 +117,7 @@ export default function StaffTurnaround() {
             <div>
               <h2 style={{ ...styles.cardTitle, margin: 0 }}>{info.flight_number}</h2>
               <div style={styles.muted}>
-                {info.origin_code} → {info.dest_code} · departs {new Date(info.scheduled_departure).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}
+                {info.origin_code} → {info.dest_code} · departs {formatDateTime(info.scheduled_departure)}
               </div>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>

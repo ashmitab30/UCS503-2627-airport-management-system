@@ -10,23 +10,22 @@ import {
   getRebookingOptions,
   rebookConnection,
 } from '../services/connectionService.js';
-import { io } from '../index.js';
 
 export const connectionsRouter = Router();
 
 const createConnectionSchema = z.object({
-  inbound_flight_id: z.number().int().positive(),
-  outbound_flight_id: z.number().int().positive(),
-  passenger_id: z.number().int().positive().optional(),
-  inbound_booking_id: z.number().int().positive().optional().nullable(),
-  outbound_booking_id: z.number().int().positive().optional().nullable(),
+  inbound_flight_id: z.number().int().positive('inbound_flight_id must be a positive integer'),
+  outbound_flight_id: z.number().int().positive('outbound_flight_id must be a positive integer'),
+  passenger_id: z.number().int().positive('passenger_id must be a positive integer').optional(),
+  inbound_booking_id: z.number().int().positive('inbound_booking_id must be a positive integer'),
+  outbound_booking_id: z.number().int().positive('outbound_booking_id must be a positive integer'),
 });
 
-// POST /connections — creates a validated connecting itinerary
+// POST /connections — creates a validated connecting itinerary (admin, ops_manager only)
 connectionsRouter.post(
   '/',
   authenticate,
-  requireAuth,
+  requireRole(...ADMIN_OPS_ROLES),
   validate({ body: createConnectionSchema }),
   async (req, res) => {
     const {
@@ -44,8 +43,9 @@ connectionsRouter.post(
         inboundFlightId: inbound_flight_id,
         outboundFlightId: outbound_flight_id,
         passengerId: resolvedPassengerId,
-        inboundBookingId,
-        outboundBookingId,
+        inboundBookingId: inbound_booking_id,
+        outboundBookingId: outbound_booking_id,
+        requireBookings: true,
         client: pool,
       });
 
@@ -53,6 +53,38 @@ connectionsRouter.post(
     } catch (err) {
       console.error('create connection error:', err.message);
       res.status(err.status || 500).json({ error: err.message || 'Could not create connection' });
+    }
+  }
+);
+
+// DELETE /connections/:id — unlinks a connection without affecting bookings (admin, ops_manager only)
+connectionsRouter.delete(
+  '/:id',
+  authenticate,
+  requireRole(...ADMIN_OPS_ROLES),
+  async (req, res) => {
+    const connectionId = parseInt(req.params.id, 10);
+    if (isNaN(connectionId) || connectionId <= 0) {
+      return res.status(400).json({ error: 'Invalid connection ID' });
+    }
+
+    try {
+      const { rows } = await pool.query(
+        'DELETE FROM connection WHERE id = $1 RETURNING id, inbound_booking_id, outbound_booking_id',
+        [connectionId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Connection not found' });
+      }
+
+      res.json({
+        message: 'Connection unlinked successfully',
+        unlinked_connection_id: rows[0].id,
+      });
+    } catch (err) {
+      console.error('unlink connection error:', err.message);
+      res.status(500).json({ error: 'Could not unlink connection' });
     }
   }
 );
@@ -113,6 +145,95 @@ connectionsRouter.get('/mine', authenticate, requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Could not load connections' });
   }
 });
+
+const linkMineSchema = z.object({
+  inbound_booking_id: z.number().int().positive('inbound_booking_id must be a positive integer'),
+  outbound_booking_id: z.number().int().positive('outbound_booking_id must be a positive integer'),
+});
+
+// POST /connections/mine — passenger links their own bookings into a connection
+connectionsRouter.post(
+  '/mine',
+  authenticate,
+  requireAuth,
+  validate({ body: linkMineSchema }),
+  async (req, res) => {
+    const { inbound_booking_id, outbound_booking_id } = req.body;
+    const userId = req.user.id;
+
+    try {
+      // 1. Fetch both bookings to ensure both exist and belong to the logged-in user
+      const { rows: bRows } = await pool.query(
+        'SELECT id, user_id, passenger_id, flight_id, status FROM booking WHERE id = ANY($1)',
+        [[inbound_booking_id, outbound_booking_id]]
+      );
+
+      const bIn = bRows.find((b) => b.id === inbound_booking_id);
+      const bOut = bRows.find((b) => b.id === outbound_booking_id);
+
+      if (!bIn || !bOut) {
+        return res.status(404).json({ error: 'One or both bookings not found' });
+      }
+
+      if (bIn.user_id !== userId || bOut.user_id !== userId) {
+        return res.status(403).json({ error: 'You can only link your own bookings' });
+      }
+
+      const connection = await validateAndCreateConnection({
+        inboundFlightId: bIn.flight_id,
+        outboundFlightId: bOut.flight_id,
+        passengerId: userId,
+        inboundBookingId: inbound_booking_id,
+        outboundBookingId: outbound_booking_id,
+        requireBookings: true,
+        client: pool,
+      });
+
+      res.status(201).json({ connection });
+    } catch (err) {
+      console.error('passenger link connection error:', err.message);
+      res.status(err.status || 500).json({ error: err.message || 'Could not link connection' });
+    }
+  }
+);
+
+// DELETE /connections/mine/:id — passenger unlinks their own connection
+connectionsRouter.delete(
+  '/mine/:id',
+  authenticate,
+  requireAuth,
+  async (req, res) => {
+    const connectionId = parseInt(req.params.id, 10);
+    if (isNaN(connectionId) || connectionId <= 0) {
+      return res.status(400).json({ error: 'Invalid connection ID' });
+    }
+
+    try {
+      const { rows } = await pool.query(
+        'SELECT id, passenger_id FROM connection WHERE id = $1',
+        [connectionId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Connection not found' });
+      }
+
+      if (rows[0].passenger_id !== req.user.id) {
+        return res.status(403).json({ error: 'You can only unlink your own connection' });
+      }
+
+      await pool.query('DELETE FROM connection WHERE id = $1', [connectionId]);
+
+      res.json({
+        message: 'Connection unlinked successfully',
+        unlinked_connection_id: connectionId,
+      });
+    } catch (err) {
+      console.error('passenger unlink connection error:', err.message);
+      res.status(500).json({ error: 'Could not unlink connection' });
+    }
+  }
+);
 
 // GET /connections/admin/at-risk — admin and ops_manager dashboard metrics & list
 connectionsRouter.get(
@@ -215,7 +336,16 @@ connectionsRouter.get(
         params
       );
 
-      res.json({ metrics, connections: connectionRows });
+      // 3. Query distinct airports that actually appear as connection hubs
+      const { rows: hubRows } = await pool.query(
+        `SELECT DISTINCT in_dest.id, in_dest.code, in_dest.name, in_dest.city, in_dest.min_connection_minutes
+           FROM connection c
+           JOIN flight inf ON inf.id = c.inbound_flight_id
+           JOIN airport in_dest ON in_dest.id = inf.dest_id
+          ORDER BY in_dest.code`
+      );
+
+      res.json({ metrics, connections: connectionRows, hubs: hubRows });
     } catch (err) {
       console.error('get admin at-risk connections error:', err.message);
       res.status(500).json({ error: 'Could not load connections at risk' });
@@ -229,6 +359,7 @@ connectionsRouter.get('/:id', authenticate, requireAuth, async (req, res) => {
   if (isNaN(connectionId)) return res.status(400).json({ error: 'Invalid connection ID' });
 
   try {
+    const io = req.app?.get?.('io');
     const conn = await evaluateConnectionStatus(connectionId, { client: pool, io });
     if (!conn) return res.status(404).json({ error: 'Connection not found' });
 
@@ -245,7 +376,11 @@ connectionsRouter.get('/:id/rebooking-options', authenticate, requireAuth, async
   if (isNaN(connectionId)) return res.status(400).json({ error: 'Invalid connection ID' });
 
   try {
-    const result = await getRebookingOptions(connectionId, { client: pool });
+    const result = await getRebookingOptions(connectionId, {
+      client: pool,
+      userId: req.user.id,
+      userRole: req.user.role,
+    });
     res.json(result);
   } catch (err) {
     console.error('get rebooking options error:', err.message);
@@ -270,10 +405,12 @@ connectionsRouter.post(
 
     const { flight_id, seat_id } = req.body;
     try {
+      const io = req.app?.get?.('io');
       const result = await rebookConnection(connectionId, {
         newFlightId: flight_id,
         newSeatId: seat_id,
         userId: req.user.id,
+        userRole: req.user.role,
         io,
       });
 

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../api/client.js';
 import { styles } from '../styles.js';
 import SiteHeader from './SiteHeader.jsx';
+import { formatDate, formatTime, dayOffsetLabel } from '../utils/format.js';
 
 export default function FlightTracking() {
   const { flightId } = useParams();
@@ -26,11 +27,6 @@ export default function FlightTracking() {
   function phaseLabel(phase) {
     if (!phase) return 'Scheduled';
     return phase.replace('_', ' ').toUpperCase();
-  }
-
-  function formatTime(iso) {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   return (
@@ -76,7 +72,7 @@ export default function FlightTracking() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.15)', border: '1px solid rgba(255, 255, 255, 0.3)', color: '#fff', fontSize: '12px', fontWeight: 800 }}>
                     <span className="pulse-radar-dot" />
-                    <span>Flight #{data.flight.flight_number} &middot; {phaseLabel(data.tracking.phase)}</span>
+                    <span>Flight #{data.flight.flight_number} &middot; {formatDate(data.flight.scheduled_departure)} &middot; {phaseLabel(data.tracking.phase)}</span>
                   </div>
 
                   {data.tracking.eta_minutes != null && (
@@ -106,7 +102,13 @@ export default function FlightTracking() {
                         {data.flight.origin_code}
                       </div>
                       <div style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)', marginTop: '4px' }}>
-                        Departed {formatTime(data.flight.scheduled_departure)}
+                        {data.flight.actual_departure
+                          ? `Departed ${formatTime(data.flight.actual_departure)}`
+                          : data.flight.status === 'delayed'
+                          ? `Est. departure ${formatTime(data.flight.scheduled_departure)}`
+                          : data.flight.status === 'cancelled'
+                          ? 'Cancelled'
+                          : `Scheduled ${formatTime(data.flight.scheduled_departure)}`}
                       </div>
                     </div>
 
@@ -121,7 +123,7 @@ export default function FlightTracking() {
                         {data.flight.dest_code}
                       </div>
                       <div style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)', marginTop: '4px' }}>
-                        ETA {formatTime(data.flight.scheduled_arrival)}
+                        ETA {formatTime(data.flight.scheduled_arrival)}{dayOffsetLabel(data.flight.scheduled_departure, data.flight.scheduled_arrival) ? ` (${dayOffsetLabel(data.flight.scheduled_departure, data.flight.scheduled_arrival)})` : ''}
                       </div>
                     </div>
                   </div>

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../api/client.js';
 import SiteHeader from './SiteHeader.jsx';
+import { formatDate, formatTime, dayOffsetLabel } from '../utils/format.js';
 
 export default function BoardingPass() {
   const { id } = useParams();
@@ -53,11 +54,10 @@ export default function BoardingPass() {
   }
 
   const depDate = new Date(data.scheduled_departure);
-  const boardingTime = new Date(depDate.getTime() - 40 * 60_000).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  const depTimeStr = depDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const boardingTime = formatTime(new Date(depDate.getTime() - 40 * 60_000));
+  const depTimeStr = formatTime(data.scheduled_departure);
+  const flightDateStr = formatDate(data.scheduled_departure);
+  const offset = dayOffsetLabel(data.scheduled_departure, data.scheduled_arrival);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--color-background)' }}>
@@ -79,7 +79,7 @@ export default function BoardingPass() {
               Print Pass
             </button>
             <a
-              href={`${API_URL}/bookings/${id}/boarding-pass.pdf`}
+              href={`${API_URL}/bookings/${id}/boarding-pass.pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`}
               download
               className="btn-primary-aero"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 18px', fontSize: '13px', textDecoration: 'none' }}
@@ -122,7 +122,8 @@ export default function BoardingPass() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span className="status-pill status-pill-blue" style={{ marginBottom: '6px' }}>{data.flight_number}</span>
+                <span className="status-pill status-pill-blue" style={{ marginBottom: '4px' }}>{data.flight_number}</span>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-primary)', marginBottom: '4px' }}>{flightDateStr}</span>
                 <span className="material-symbols-outlined" style={{ color: 'var(--color-primary)', fontSize: '28px' }}>
                   flight_takeoff
                 </span>
@@ -142,7 +143,7 @@ export default function BoardingPass() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', background: 'var(--color-surface-low)', padding: '16px 20px', borderRadius: '16px', marginBottom: '24px' }}>
               <div>
                 <div style={{ fontSize: '10px', color: 'var(--color-slate)', textTransform: 'uppercase', fontWeight: 700 }}>Passenger</div>
-                <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-on-surface)', marginTop: '4px' }}>{data.passenger_name}</div>
+                <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-on-surface)', marginTop: '4px' }}>{data.passenger_name || 'Passenger'}</div>
               </div>
               <div>
                 <div style={{ fontSize: '10px', color: 'var(--color-slate)', textTransform: 'uppercase', fontWeight: 700 }}>Gate</div>
@@ -172,12 +173,26 @@ export default function BoardingPass() {
               </div>
             </div>
 
-            {data.priority_boarding && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(2, 132, 199, 0.15)', color: '#38bdf8', padding: '6px 14px', borderRadius: '999px', fontSize: '11px', fontWeight: 800, marginBottom: '20px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>star</span>
-                PRIORITY BOARDING ASSISTANCE ACTIVE ({data.assistance_type?.toUpperCase()})
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
+              {data.boarding_group === 1 ? (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(2, 132, 199, 0.15)', color: '#38bdf8', padding: '6px 14px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>star</span>
+                  PRIORITY BOARDING (GROUP 1)
+                </div>
+              ) : data.boarding_group === 2 ? (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(100, 116, 139, 0.15)', color: 'var(--color-on-surface-variant)', padding: '6px 14px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>group</span>
+                  BOARDING GROUP 2
+                </div>
+              ) : null}
+
+              {data.assistance_type && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(59, 130, 246, 0.15)', color: 'var(--color-primary)', padding: '6px 14px', borderRadius: '999px', fontSize: '11px', fontWeight: 800 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>accessible</span>
+                  ASSISTANCE ACTIVE ({data.assistance_type.replace('_', ' ').toUpperCase()})
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Perforated Tear Line with Notches */}
@@ -200,8 +215,11 @@ export default function BoardingPass() {
             </div>
 
             {data.qr_code_data_url && (
-              <div style={{ background: '#fff', padding: '6px', borderRadius: '10px', display: 'inline-flex' }}>
-                <img src={data.qr_code_data_url} alt="Boarding Pass QR Code" style={{ width: '100px', height: '100px' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                <div style={{ background: '#ffffff', padding: '12px', borderRadius: '12px', display: 'inline-flex', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1px solid rgba(226, 232, 240, 0.8)' }}>
+                  <img src={data.qr_code_data_url} alt="Boarding Pass QR Code" style={{ width: '110px', height: '110px', display: 'block' }} />
+                </div>
+                <span style={{ fontSize: '10px', fontWeight: 700, color: '#0284c7', letterSpacing: '0.04em' }}>DIGITALLY SIGNED</span>
               </div>
             )}
           </div>

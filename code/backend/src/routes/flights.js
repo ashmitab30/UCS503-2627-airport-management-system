@@ -8,7 +8,6 @@ import { suggestGate } from '../services/gateAssignment.js';
 import { initTurnaroundChecklist } from '../services/turnaround.js';
 import { generateSeatsForFlight } from '../services/seatService.js';
 import { logFlightDelayAndCascade, IATA_REASON_CODES } from '../services/delayCascadeService.js';
-import { io } from '../index.js';
 import {
   ADVISORY_LOCK_DOMAINS,
   ADMIN_OPS_ROLES,
@@ -16,6 +15,8 @@ import {
   ALLOWED_STATUS_TRANSITIONS,
 } from '../constants/index.js';
 import { validate, paginationQuerySchema } from '../middleware/validate.js';
+
+const getIo = (req) => req?.app?.get?.('io');
 
 export const flightsRouter = Router();
 
@@ -27,7 +28,8 @@ const createFlightSchema = z.object({
   scheduled_departure: z.string().datetime({ offset: true }).or(z.string().min(1)),
   scheduled_arrival: z.string().datetime({ offset: true }).or(z.string().min(1)),
   gate_id: z.number().int().positive().optional().nullable(),
-  base_price_cents: z.number().int().positive().optional().default(5000),
+  base_price_cents: z.number().int().positive().max(50000000).optional().default(500000),
+  tail_number: z.string().trim().max(20).optional().nullable(),
 }).refine(
   (data) => data.origin_id !== data.dest_id,
   { message: 'origin_id and dest_id must differ', path: ['dest_id'] }
@@ -53,6 +55,7 @@ flightsRouter.post(
       scheduled_arrival,
       gate_id,
       base_price_cents,
+      tail_number,
     } = req.body;
 
     const client = await pool.connect();
@@ -140,10 +143,10 @@ flightsRouter.post(
 
       const { rows } = await client.query(
         `INSERT INTO flight (flight_number, aircraft_type_id, origin_id, dest_id,
-                              scheduled_departure, scheduled_arrival, gate_id, status, base_price_cents)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8)
+                              scheduled_departure, scheduled_arrival, gate_id, status, base_price_cents, tail_number)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8, $9)
          RETURNING id, flight_number, aircraft_type_id, origin_id, dest_id,
-                   scheduled_departure, scheduled_arrival, gate_id, status, base_price_cents`,
+                   scheduled_departure, scheduled_arrival, gate_id, status, base_price_cents, tail_number`,
         [
           flight_number,
           aircraft_type_id,
@@ -152,7 +155,8 @@ flightsRouter.post(
           scheduled_departure,
           scheduled_arrival,
           resolvedGateId,
-          base_price_cents || 5000,
+          base_price_cents || 500000,
+          tail_number ? String(tail_number).trim() : null,
         ]
       );
       const flight = rows[0];
@@ -164,6 +168,7 @@ flightsRouter.post(
 
       await client.query('COMMIT');
 
+      const io = getIo(req);
       if (io) {
         io.emit('flight:created', { flight });
       }
@@ -212,7 +217,8 @@ flightsRouter.get('/', validate({ query: listFlightsQuerySchema }), async (req, 
   try {
     const { rows } = await pool.query(
       `SELECT f.id, f.flight_number, f.status, f.scheduled_departure, f.scheduled_arrival,
-              f.gate_id, f.base_price_cents, g.code AS gate_code, at.model AS aircraft_model, at.size_class,
+              f.estimated_departure, f.estimated_arrival, f.actual_departure, f.actual_arrival,
+              f.gate_id, f.base_price_cents, f.tail_number, g.code AS gate_code, at.model AS aircraft_model, at.size_class,
               origin.code AS origin_code, origin.name AS origin_name,
               dest.code AS dest_code, dest.name AS dest_name
        FROM flight f
@@ -265,6 +271,30 @@ flightsRouter.get('/:id', async (req, res) => {
     res.status(500).json({ error: 'Could not fetch flight' });
   }
 });
+
+// PATCH /flights/:id — admin, ops_manager. Update flight fields such as tail_number.
+flightsRouter.patch(
+  '/:id',
+  authenticate,
+  requireRole(...ADMIN_OPS_ROLES),
+  async (req, res) => {
+    const flightId = parseInt(req.params.id, 10);
+    if (isNaN(flightId)) return res.status(400).json({ error: 'Invalid flight ID' });
+
+    const { tail_number } = req.body;
+    try {
+      const { rows } = await pool.query(
+        'UPDATE flight SET tail_number = $1 WHERE id = $2 RETURNING *',
+        [tail_number !== undefined ? (tail_number ? String(tail_number).trim() : null) : null, flightId]
+      );
+      if (rows.length === 0) return res.status(404).json({ error: 'Flight not found' });
+      res.json({ flight: rows[0] });
+    } catch (err) {
+      console.error('update flight error:', err.message);
+      res.status(500).json({ error: 'Could not update flight' });
+    }
+  }
+);
 
 // PATCH /flights/:id/gate — admin, ops_manager. Reassign gate, race-safe via pg_advisory_xact_lock.
 flightsRouter.patch(
@@ -338,6 +368,7 @@ flightsRouter.patch(
 
       await client.query('COMMIT');
 
+      const io = getIo(req);
       if (io) {
         io.emit('flight:gate_reassigned', { flightId, gateId });
         io.to('ops_feed').emit('flight:gate_changed', { flightId, gateId, gateCode: gate.code });
@@ -403,6 +434,7 @@ flightsRouter.patch(
       const updatedFlight = updateRes.rows[0];
 
       let cascadeReport = null;
+      let cancelledBookings = { rows: [], rowCount: 0 };
 
       // Handle cancellation cascade
       if (status === 'cancelled') {
@@ -417,7 +449,7 @@ flightsRouter.patch(
         );
 
         // 3. Cancel active bookings
-        const cancelledBookings = await client.query(
+        cancelledBookings = await client.query(
           `UPDATE booking SET status = 'cancelled'
            WHERE flight_id = $1 AND status NOT IN ('cancelled')
            RETURNING id, user_id`,
@@ -445,6 +477,15 @@ flightsRouter.patch(
 
       await client.query('COMMIT');
 
+      // Re-evaluate connecting passenger itineraries impacted by status change
+      try {
+        const { reEvaluateConnectionsForFlight } = await import('../services/connectionService.js');
+        await reEvaluateConnectionsForFlight(flightId, { client: pool, io: getIo(req) });
+      } catch (connErr) {
+        console.error('Error re-evaluating connections after flight status change:', connErr.message);
+      }
+
+      const io = getIo(req);
       if (io) {
         io.emit('flight:status_updated', {
           flightId,
@@ -466,7 +507,7 @@ flightsRouter.patch(
         }
       }
 
-      res.json({ flight: updatedFlight, cascade: cascadeReport });
+      res.status(200).json({ flight: updatedFlight, cascade: cascadeReport });
     } catch (err) {
       await client.query('ROLLBACK');
       console.error('update flight status error:', err.message);
@@ -501,7 +542,7 @@ flightsRouter.post(
         reasonCode: reason_code,
         notes,
         loggedBy: req.user.id,
-        io,
+        io: getIo(req),
       });
 
       if (!result.ok) {
@@ -538,3 +579,59 @@ flightsRouter.get('/:id/delays', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Could not fetch delay logs' });
   }
 });
+
+// GET /flights/:id/boarding-queue — staff (ground_crew, ops_manager, admin).
+// Lists checked-in and boarded passengers ordered by boarding group then check-in time / id.
+flightsRouter.get(
+  '/:id/boarding-queue',
+  authenticate,
+  requireRole('ground_crew', 'ops_manager', 'admin'),
+  async (req, res) => {
+    const flightId = parseInt(req.params.id, 10);
+    if (isNaN(flightId)) return res.status(400).json({ error: 'Invalid flight ID' });
+
+    try {
+      const flightRes = await pool.query(
+        `SELECT f.id, f.flight_number, f.status,
+                o.code AS origin_code, d.code AS dest_code
+         FROM flight f
+         JOIN airport o ON o.id = f.origin_id
+         JOIN airport d ON d.id = f.dest_id
+         WHERE f.id = $1`,
+        [flightId]
+      );
+      if (flightRes.rows.length === 0) {
+        return res.status(404).json({ error: 'Flight not found' });
+      }
+      const flight = flightRes.rows[0];
+
+      const { rows } = await pool.query(
+        `SELECT b.id AS booking_id, b.booking_ref, b.status AS booking_status,
+                b.boarding_group,
+                (b.status = 'boarded') AS boarded,
+                b.created_at,
+                s.seat_number, s.class AS seat_class,
+                COALESCE(p.name, u.name) AS passenger_name,
+                ar.type AS assistance_type, ar.status AS assistance_status
+         FROM booking b
+         LEFT JOIN seat s ON s.id = b.seat_id
+         LEFT JOIN "user" u ON u.id = b.user_id
+         LEFT JOIN passenger p ON p.id = b.passenger_id
+         LEFT JOIN assistance_request ar ON ar.booking_id = b.id AND ar.status IN ('requested', 'assigned', 'in_progress')
+         WHERE b.flight_id = $1 AND b.status IN ('checked_in', 'boarded')
+         ORDER BY b.boarding_group ASC NULLS LAST, b.id ASC`,
+        [flightId]
+      );
+
+      res.json({
+        flight,
+        queue: rows,
+        total: rows.length,
+        boarded_count: rows.filter((r) => r.boarded).length,
+      });
+    } catch (err) {
+      console.error('get boarding queue error:', err.message);
+      res.status(500).json({ error: 'Could not load boarding queue' });
+    }
+  }
+);

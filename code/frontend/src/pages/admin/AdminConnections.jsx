@@ -2,19 +2,32 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useSocket, LiveStatusPill } from '../../context/SocketContext.jsx';
+import { formatINR, formatDate, formatTime, dayOffsetLabel } from '../../utils/format.js';
+import UnlinkConnectionModal from '../../components/connections/UnlinkConnectionModal.jsx';
+import AddConnectionModal from '../../components/connections/AddConnectionModal.jsx';
+import MctEditorModal from '../../components/connections/MctEditorModal.jsx';
+import LogDelayModal from '../../components/flights/LogDelayModal.jsx';
 
 export default function AdminConnections() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { socket } = useSocket();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [metrics, setMetrics] = useState({ monitored: 0, at_risk: 0, missed: 0, rebooked_today: 0 });
   const [connections, setConnections] = useState([]);
+  const [hubs, setHubs] = useState([]);
+
+  // Modals
+  const [connectionToUnlink, setConnectionToUnlink] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showMctModal, setShowMctModal] = useState(false);
+  const [showDelayModal, setShowDelayModal] = useState(false);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'risk' | 'missed'
-  const [hubFilter, setHubFilter] = useState('all'); // 'all' | 'BOM' | 'DEL' | 'BLR'
+  const [hubFilter, setHubFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const loadConnections = useCallback(async () => {
@@ -28,6 +41,7 @@ export default function AdminConnections() {
       const data = await apiFetch(`/connections/admin/at-risk?${params.toString()}`, { token });
       setMetrics(data.metrics || { monitored: 0, at_risk: 0, missed: 0, rebooked_today: 0 });
       setConnections(data.connections || []);
+      setHubs(data.hubs || []);
     } catch (err) {
       setError(err.message || 'Failed to load connections at risk');
     } finally {
@@ -76,9 +90,38 @@ export default function AdminConnections() {
           </p>
         </div>
 
-        {/* Live Status & Refresh */}
+        {/* Actions & Refresh */}
         <div className="flex flex-wrap items-center gap-3">
           <LiveStatusPill />
+          <button
+            onClick={() => setShowAddModal(true)}
+            type="button"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-xs text-xs font-bold"
+            title="Create connecting itinerary"
+          >
+            <span className="material-symbols-outlined text-[16px]">add_link</span>
+            <span>Add Connection</span>
+          </button>
+          <button
+            onClick={() => setShowDelayModal(true)}
+            type="button"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-all border border-slate-200 shadow-xs text-xs font-bold"
+            title="Log operational flight delay"
+          >
+            <span className="material-symbols-outlined text-[16px] text-amber-600">schedule</span>
+            <span>Log Delay</span>
+          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setShowMctModal(true)}
+              type="button"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-all border border-slate-200 shadow-xs text-xs font-bold"
+              title="Manage Airport Minimum Connection Time"
+            >
+              <span className="material-symbols-outlined text-[16px] text-blue-600">tune</span>
+              <span>Hub MCT Standards</span>
+            </button>
+          )}
           <button
             onClick={() => {
               setLoading(true);
@@ -110,7 +153,11 @@ export default function AdminConnections() {
           </div>
           <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-            <span>Hubs: BOM (45m), DEL (60m), BLR (40m)</span>
+            <span>
+              {hubs.length > 0
+                ? `Hubs: ${hubs.map((h) => `${h.code} (${h.min_connection_minutes}m)`).join(', ')}`
+                : 'Hubs: Transit Concourse Telemetry'}
+            </span>
           </div>
         </div>
 
@@ -166,7 +213,7 @@ export default function AdminConnections() {
           </div>
           <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-            <span>₹0 IRROPS Protection applied</span>
+            <span>Zero-Fee Guarantee • Fare Difference Applied</span>
           </div>
         </div>
       </section>
@@ -212,8 +259,8 @@ export default function AdminConnections() {
           </div>
 
           {/* Hub Selector Pills */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-full self-start lg:self-auto">
-            {['all', 'BOM', 'DEL', 'BLR'].map((hub) => (
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-full self-start lg:self-auto flex-wrap">
+            {['all', ...(hubs.length > 0 ? hubs.map((h) => h.code) : ['BOM', 'DEL', 'BLR'])].map((hub) => (
               <button
                 key={hub}
                 onClick={() => setHubFilter(hub)}
@@ -284,6 +331,7 @@ export default function AdminConnections() {
                   <th className="py-3 px-5">Transfer Hub</th>
                   <th className="py-3 px-5">Layover vs MCT</th>
                   <th className="py-3 px-5">Status</th>
+                  <th className="py-3 px-5 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="text-xs divide-y divide-slate-100">
@@ -326,8 +374,11 @@ export default function AdminConnections() {
                               ({c.inbound_origin_code} → {c.hub_code})
                             </span>
                           </div>
+                          <span className="text-[11px] font-semibold text-blue-600">
+                            {formatDate(c.inbound_departure)}
+                          </span>
                           <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
-                            <span>Arr {inArr.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span>Arr {formatTime(inArr)}</span>
                             {c.inbound_delay_minutes > 0 && (
                               <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">
                                 +{c.inbound_delay_minutes}m delay
@@ -349,8 +400,16 @@ export default function AdminConnections() {
                               ({c.hub_code} → {c.outbound_dest_code})
                             </span>
                           </div>
+                          <span className="text-[11px] font-semibold text-sky-600">
+                            {formatDate(c.outbound_departure)}
+                          </span>
                           <span className="text-[11px] text-slate-500 mt-0.5">
-                            Dep {outDep.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({c.outbound_status})
+                            Dep {formatTime(outDep)} ({c.outbound_status})
+                            {dayOffsetLabel(c.outbound_departure, c.outbound_arrival) && (
+                              <span className="text-[10px] text-rose-600 font-bold ml-1">
+                                {dayOffsetLabel(c.outbound_departure, c.outbound_arrival)}
+                              </span>
+                            )}
                           </span>
                         </div>
                       </td>
@@ -404,6 +463,19 @@ export default function AdminConnections() {
                           </span>
                         )}
                       </td>
+
+                      {/* Action */}
+                      <td className="py-3.5 px-5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setConnectionToUnlink(c)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-semibold text-[11px] transition-colors"
+                          title="Unlink connection (bookings remain confirmed)"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">link_off</span>
+                          <span>Unlink</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -416,13 +488,40 @@ export default function AdminConnections() {
         <div className="p-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
           <div className="flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px] text-blue-600">verified</span>
-            <span>MCT Standards: BOM = 45m · DEL = 60m · BLR = 40m</span>
+            <span>
+              {hubs.length > 0
+                ? `MCT Standards: ${hubs.map((h) => `${h.code} = ${h.min_connection_minutes}m`).join(' · ')}`
+                : 'MCT Standards: BOM = 45m · DEL = 60m · BLR = 40m'}
+            </span>
           </div>
           <div className="font-semibold text-slate-700">
             {connections.length} {connections.length === 1 ? 'record' : 'records'} active
           </div>
         </div>
       </section>
+
+      {/* Admin Connection Dialogs */}
+      <UnlinkConnectionModal
+        isOpen={!!connectionToUnlink}
+        connection={connectionToUnlink}
+        onClose={() => setConnectionToUnlink(null)}
+        onSuccess={loadConnections}
+      />
+      <AddConnectionModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSuccess={loadConnections}
+      />
+      <MctEditorModal
+        isOpen={showMctModal}
+        onClose={() => setShowMctModal(false)}
+        onSuccess={loadConnections}
+      />
+      <LogDelayModal
+        isOpen={showDelayModal}
+        onClose={() => setShowDelayModal(false)}
+        onSuccess={loadConnections}
+      />
     </div>
   );
 }

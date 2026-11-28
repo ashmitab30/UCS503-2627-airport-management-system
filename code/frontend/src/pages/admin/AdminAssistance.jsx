@@ -6,7 +6,12 @@ export default function AdminAssistance() {
   const { token } = useAuth();
   return (
     <div>
-      <h1 style={styles.title}>Assistance requests</h1>
+      <div style={{ marginBottom: '24px' }}>
+        <h1 style={styles.title}>Passenger Special Assistance &amp; Care</h1>
+        <p style={styles.subtitle}>
+          Oversee, filter, and reassign special assistance requests across all flights and terminal facilities.
+        </p>
+      </div>
       <AssistanceQueue token={token} />
     </div>
   );

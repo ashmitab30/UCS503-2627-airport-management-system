@@ -29,10 +29,27 @@ import StaffShifts from './pages/staff/StaffShifts.jsx';
 import StaffAssistance from './pages/staff/StaffAssistance.jsx';
 import StaffEmergencies from './pages/staff/StaffEmergencies.jsx';
 import StaffPassword from './pages/staff/StaffPassword.jsx';
+import StaffGate from './pages/staff/StaffGate.jsx';
+import StaffBaggage from './pages/staff/StaffBaggage.jsx';
+import StaffSecurity from './pages/staff/StaffSecurity.jsx';
+import PassengerParking from './pages/PassengerParking.jsx';
+import Facilities from './pages/Facilities.jsx';
+import AdminParking from './pages/admin/AdminParking.jsx';
+import AdminSecurity from './pages/admin/AdminSecurity.jsx';
+import AdminFacilities from './pages/admin/AdminFacilities.jsx';
+import PassengerLayout from './pages/PassengerLayout.jsx';
+import SupportConsole from './pages/support/SupportConsole.jsx';
+import PublicVerify from './pages/PublicVerify.jsx';
+import ErrorBoundary from './components/common/ErrorBoundary.jsx';
 import { styles } from './styles.js';
+import { getRoleDashboardPath, STAFF_PORTAL_ROLES } from './utils/navigation.js';
 
-// Roles that use the staff portal (admin / ops_manager use /admin instead).
-const STAFF_PORTAL_ROLES = ['ground_crew', 'security', 'medical'];
+// "/" redirects to /login when not logged in, and to the user's role dashboard when logged in.
+function HomeRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  return <Navigate to={getRoleDashboardPath(user)} replace />;
+}
 
 // /dashboard sends staff-portal roles to /staff; everyone else keeps the existing dashboard.
 function DashboardRoute() {
@@ -46,59 +63,39 @@ export default function App() {
     <AuthProvider>
       <SocketProvider>
         <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<HealthCheck />} />
+          <ErrorBoundary>
+            <Routes>
+          <Route path="/" element={<HomeRoute />} />
+          <Route path="/status" element={<HealthCheck />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardRoute />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/book"
-            element={
-              <ProtectedRoute>
-                <BookFlight />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/my-flights"
-            element={
-              <ProtectedRoute>
-                <MyFlights />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/track/:flightId"
-            element={
-              <ProtectedRoute>
-                <FlightTracking />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/boarding-pass/:id"
-            element={
-              <ProtectedRoute>
-                <BoardingPass />
-              </ProtectedRoute>
-            }
-          />
+          <Route element={<ProtectedRoute><PassengerLayout /></ProtectedRoute>}>
+            <Route path="/dashboard" element={<DashboardRoute />} />
+            <Route path="/book" element={<BookFlight />} />
+            <Route path="/my-flights" element={<MyFlights />} />
+            <Route path="/track/:flightId" element={<FlightTracking />} />
+            <Route path="/boarding-pass/:id" element={<BoardingPass />} />
+            <Route path="/parking" element={<PassengerParking />} />
+            <Route path="/facilities" element={<Facilities />} />
+          </Route>
+          <Route path="/verify/:ref" element={<PublicVerify />} />
           <Route
             path="/staff"
             element={
-              <ProtectedRoute roles={STAFF_PORTAL_ROLES}>
+              <ProtectedRoute roles={[...STAFF_PORTAL_ROLES, 'ops_manager', 'admin']}>
                 <StaffLayout />
               </ProtectedRoute>
             }
           >
             <Route index element={<StaffHome />} />
+            <Route
+              path="gate"
+              element={
+                <ProtectedRoute roles={['ground_crew', 'ops_manager', 'admin']}>
+                  <StaffGate />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="turnaround"
               element={
@@ -117,6 +114,30 @@ export default function App() {
             />
             <Route path="emergencies" element={<StaffEmergencies />} />
             <Route path="shifts" element={<StaffShifts />} />
+            <Route
+              path="baggage"
+              element={
+                <ProtectedRoute roles={['ground_crew', 'ops_manager', 'admin']}>
+                  <StaffBaggage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="security"
+              element={
+                <ProtectedRoute roles={['security', 'ops_manager', 'admin']}>
+                  <StaffSecurity />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="support"
+              element={
+                <ProtectedRoute roles={['ground_crew', 'ops_manager', 'admin']}>
+                  <SupportConsole />
+                </ProtectedRoute>
+              }
+            />
             <Route path="password" element={<StaffPassword />} />
           </Route>
           <Route
@@ -130,6 +151,10 @@ export default function App() {
             <Route index element={<AdminDashboard />} />
             <Route path="flights" element={<AdminFlights />} />
             <Route path="gates" element={<AdminGates />} />
+            <Route path="gate" element={<StaffGate />} />
+            <Route path="baggage" element={<StaffBaggage />} />
+            <Route path="parking" element={<AdminParking />} />
+            <Route path="security" element={<AdminSecurity />} />
             <Route path="resources" element={<AdminResources />} />
             <Route path="emergencies" element={<AdminEmergencies />} />
             <Route
@@ -145,9 +170,12 @@ export default function App() {
             <Route path="assistance" element={<AdminAssistance />} />
             <Route path="bookings" element={<AdminBookings />} />
             <Route path="connections" element={<AdminConnections />} />
+            <Route path="facilities" element={<AdminFacilities />} />
+            <Route path="support" element={<SupportConsole />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+          </ErrorBoundary>
       </BrowserRouter>
     </SocketProvider>
   </AuthProvider>
@@ -197,7 +225,7 @@ function HealthCheck() {
 
       <div style={styles.card}>
         {user ? (
-          <p><Link to="/dashboard">Go to your dashboard</Link> (signed in as {user.email})</p>
+          <p><Link to={getRoleDashboardPath(user)}>Go to your dashboard</Link> (signed in as {user.email})</p>
         ) : (
           <p>
             <Link to="/login">Sign in</Link> or <Link to="/register">create a passenger account</Link>.

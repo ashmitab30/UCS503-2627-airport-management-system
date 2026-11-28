@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { apiFetch } from '../../api/client.js';
 import { styles } from '../../styles.js';
+import { formatTime, formatDateTime } from '../../utils/format.js';
 
 const ROLE_TITLES = {
   ground_crew: 'Ground Crew Console',
@@ -70,8 +71,6 @@ export default function StaffHome() {
   useEffect(() => { load(); }, [load]);
 
   const shiftInProgress = !!data?.nextShift && new Date(data.nextShift.start_time).getTime() <= Date.now();
-  const fmtTime = (v) => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const fmtDateTime = (v) => new Date(v).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 
   return (
     <div>
@@ -93,18 +92,18 @@ export default function StaffHome() {
             label="Duty status"
             tone={data.openAttendance ? 'good' : undefined}
             value={data.openAttendance ? 'On duty' : 'Off duty'}
-            hint={data.openAttendance ? `Clocked in at ${fmtTime(data.openAttendance.clock_in)}` : 'Clock in from your shifts page'}
+            hint={data.openAttendance ? `Clocked in at ${formatTime(data.openAttendance.clock_in)}` : 'Clock in from your shifts page'}
             to="/staff/shifts"
           />
           <StatCard
             icon="schedule"
             label={shiftInProgress ? 'Current shift' : 'Next shift'}
-            value={data.nextShift ? (shiftInProgress ? `Until ${fmtTime(data.nextShift.end_time)}` : fmtTime(data.nextShift.start_time)) : 'None'}
+            value={data.nextShift ? (shiftInProgress ? `Until ${formatTime(data.nextShift.end_time)}` : formatTime(data.nextShift.start_time)) : 'None'}
             hint={
               data.nextShift
                 ? shiftInProgress
                   ? `In progress · ${data.nextShift.area_assigned || 'No area set'}`
-                  : `${fmtDateTime(data.nextShift.start_time)} · ${data.nextShift.area_assigned || 'No area set'}`
+                  : `${formatDateTime(data.nextShift.start_time)} · ${data.nextShift.area_assigned || 'No area set'}`
                 : 'No upcoming shifts assigned'
             }
             to="/staff/shifts"

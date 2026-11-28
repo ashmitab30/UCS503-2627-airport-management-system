@@ -5,8 +5,11 @@ import rateLimit from 'express-rate-limit';
 import http from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import fs from 'fs';
 import 'dotenv/config';
 
+import { pool } from './db/pool.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { employeesRouter } from './routes/employees.js';
@@ -23,12 +26,32 @@ import { bookingsRouter } from './routes/bookings.js';
 import { emergenciesRouter } from './routes/emergencies.js';
 import { trackingRouter } from './routes/tracking.js';
 import { connectionsRouter } from './routes/connections.js';
+import { verifyRouter } from './routes/verify.js';
+import { gateRouter } from './routes/gate.js';
+import { baggageRouter } from './routes/baggage.js';
+import { parkingRouter } from './routes/parking.js';
+import { securityRouter } from './routes/security.js';
+import { facilitiesRouter } from './routes/facilities.js';
+import { chatRouter } from './routes/chat.js';
 
-// Production safety verification: refuse to start with missing or default secret
+const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+
+// Startup verification: refuse to start in any environment if JWT_SECRET is missing
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: Refusing to start because JWT_SECRET is missing');
+  process.exit(1);
+}
+
+// Production safety verification: refuse to start with default secret
 if (process.env.NODE_ENV === 'production') {
   const secret = process.env.JWT_SECRET;
-  if (!secret || secret === 'my_local_dev_secret_123' || secret.includes('placeholder')) {
-    console.error('FATAL: Refusing to start in production with missing or default JWT_SECRET');
+  if (secret === 'my_local_dev_secret_123' || secret.includes('placeholder')) {
+    console.error('FATAL: Refusing to start in production with default JWT_SECRET');
+    process.exit(1);
+  }
+  const qrSecret = process.env.QR_SIGNING_SECRET;
+  if (!qrSecret || qrSecret.includes('change_me') || qrSecret.includes('placeholder')) {
+    console.error('FATAL: Refusing to start in production with missing or default QR_SIGNING_SECRET');
     process.exit(1);
   }
 }
@@ -72,6 +95,7 @@ const authLimiter = rateLimit({
 });
 app.use('/auth/login', authLimiter);
 app.use('/auth/register', authLimiter);
+app.use('/auth/change-password', authLimiter);
 
 app.use('/health', healthRouter);
 app.use('/auth', authRouter);
@@ -89,23 +113,71 @@ app.use('/bookings', bookingsRouter);
 app.use('/emergencies', emergenciesRouter);
 app.use('/tracking', trackingRouter);
 app.use('/connections', connectionsRouter);
+app.use('/verify', verifyRouter);
+app.use('/gate', gateRouter);
+app.use('/baggage', baggageRouter);
+app.use('/parking', parkingRouter);
+app.use('/security', securityRouter);
+app.use('/facilities', facilitiesRouter);
+app.use('/chat', chatRouter);
 
 app.get('/', (req, res) => {
   res.json({
     message: 'Airport Management System API',
     status: 'operational',
-    version: '0.2.0',
-    modules: ['auth', 'ops_core', 'booking', 'emergencies', 'tracking'],
+    version: pkg.version,
+    modules: [
+      'health',
+      'auth',
+      'employees',
+      'shifts',
+      'attendance',
+      'airports',
+      'aircraft-types',
+      'gates',
+      'flights',
+      'turnaround',
+      'resources',
+      'resource-assignments',
+      'bookings',
+      'emergencies',
+      'tracking',
+      'connections',
+      'verify',
+      'gate',
+      'baggage',
+      'parking',
+      'security',
+      'facilities',
+      'chat',
+    ],
   });
 });
 
-// Central JSON error handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err.message);
-  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+// Test-only route to verify error handling behavior
+if (process.env.NODE_ENV === 'test') {
+  app.get('/test-error-trigger', (req, res, next) => {
+    next(new Error('Sensitive database leak: secret_pass_123'));
+  });
+}
+
+// 404 handler for unknown routes
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
 });
 
-const server = http.createServer(app);
+// Central JSON error handler: logs real error server-side, returns generic message + errorId
+app.use((err, req, res, next) => {
+  const errorId = crypto.randomUUID();
+  console.error(`[Unhandled Error ${errorId}]:`, err);
+  const status = typeof err.status === 'number' ? err.status : 500;
+  res.status(status).json({
+    error: 'Internal server error',
+    errorId,
+  });
+});
+
+export const server = http.createServer(app);
 
 export const io = new Server(server, {
   cors: {
@@ -113,28 +185,28 @@ export const io = new Server(server, {
     credentials: true,
   },
 });
+app.set('io', io);
 
 // Authenticated Socket.IO middleware — verifies JWT from handshake.auth.token
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
   if (!token) {
-    socket.emit('auth_error', { error: 'Authentication failed' });
-    return next(new Error('Authentication failed'));
+    return next(new Error('unauthorized'));
   }
   try {
-    const user = jwt.verify(token, process.env.JWT_SECRET || 'my_local_dev_secret_123');
-    socket.user = user;
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    socket.user = { id: payload.sub ?? payload.id, role: payload.role, email: payload.email };
     next();
   } catch {
-    socket.emit('auth_error', { error: 'Authentication failed' });
-    return next(new Error('Authentication failed'));
+    return next(new Error('unauthorized'));
   }
 });
 
 io.on('connection', (socket) => {
   const user = socket.user;
-  if (user?.id) {
-    socket.join(`user:${user.id}`);
+  const userId = user?.id ?? user?.sub;
+  if (userId) {
+    socket.join(`user:${userId}`);
   }
   if (user?.role) {
     socket.join(`role:${user.role}`);
@@ -143,9 +215,18 @@ io.on('connection', (socket) => {
     }
   }
 
-  socket.on('subscribe_flight', (flightId) => {
-    if (flightId) socket.join(`flight:${flightId}`);
+  socket.on('subscribe_flight', async (flightId) => {
+    if (!flightId) return;
+    try {
+      const { rows } = await pool.query('SELECT id FROM flight WHERE id = $1', [flightId]);
+      if (rows.length > 0) {
+        socket.join(`flight:${flightId}`);
+      }
+    } catch (err) {
+      console.error(`Error subscribing to flight ${flightId}:`, err.message);
+    }
   });
+
   socket.on('unsubscribe_flight', (flightId) => {
     if (flightId) socket.leave(`flight:${flightId}`);
   });
@@ -155,7 +236,11 @@ io.on('connection', (socket) => {
   });
 });
 
+export { app };
+
 const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
-  console.log(`Airport Management backend listening on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(PORT, () => {
+    console.log(`Airport Management backend listening on port ${PORT}`);
+  });
+}

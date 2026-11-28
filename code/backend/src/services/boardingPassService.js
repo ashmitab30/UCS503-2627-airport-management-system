@@ -1,14 +1,16 @@
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { pool } from '../db/pool.js';
+import { hasDeparted } from './flightTime.js';
+import { buildVerificationUrl } from './qrSignService.js';
 
 /**
- * Generates an IATA-style QR code payload and returns a Data URL / buffer.
+ * Generates a signed verification QR code data URL with a standard 4-module quiet zone.
  */
 export async function generateQrCode(payloadText) {
   return QRCode.toDataURL(payloadText, {
     errorCorrectionLevel: 'M',
-    margin: 1,
+    margin: 4,
     width: 200,
   });
 }
@@ -19,7 +21,7 @@ export async function generateQrCode(payloadText) {
 export async function streamBoardingPassPdf(bookingId, res) {
   const { rows } = await pool.query(
     `SELECT b.id, b.booking_ref, b.status, b.created_at, b.price_cents,
-            f.id AS flight_id, f.flight_number, f.scheduled_departure, f.scheduled_arrival, f.status AS flight_status,
+            f.id AS flight_id, f.flight_number, f.scheduled_departure, f.scheduled_arrival, f.actual_departure, f.status AS flight_status,
             o.code AS origin_code, o.name AS origin_name,
             d.code AS dest_code, d.name AS dest_name,
             g.code AS gate_code,
@@ -47,11 +49,15 @@ export async function streamBoardingPassPdf(bookingId, res) {
 
   const b = rows[0];
 
-  const qrPayload = `M1${b.passenger_name.padEnd(20)} E${b.booking_ref} ${b.origin_code}${b.dest_code}${b.flight_number.padEnd(7)} ${b.seat_number} ${b.status.toUpperCase()}`;
-  const qrBuffer = await QRCode.toBuffer(qrPayload, {
+  if (hasDeparted(b)) {
+    throw new Error('Flight has already departed');
+  }
+
+  const verificationUrl = buildVerificationUrl(b.booking_ref);
+  const qrBuffer = await QRCode.toBuffer(verificationUrl, {
     errorCorrectionLevel: 'M',
-    margin: 1,
-    width: 130,
+    margin: 4,
+    width: 140,
   });
 
   const doc = new PDFDocument({ size: [600, 320], margin: 20 });
@@ -77,10 +83,16 @@ export async function streamBoardingPassPdf(bookingId, res) {
   // Main Route section
   doc.fillColor('#38BDF8').fontSize(26).font('Helvetica-Bold');
   doc.text(b.origin_code, 30, 80);
-  doc.fillColor('#FFFFFF').fontSize(14).font('Helvetica');
-  doc.text('✈', 100, 86);
+
+  // Crisp vector route arrow (replaces missing font glyph)
+  doc.save();
+  doc.strokeColor('#FFFFFF').lineWidth(2.5).lineCap('round').lineJoin('round');
+  doc.moveTo(98, 93).lineTo(124, 93).stroke();
+  doc.moveTo(117, 87).lineTo(124, 93).lineTo(117, 99).stroke();
+  doc.restore();
+
   doc.fillColor('#38BDF8').fontSize(26).font('Helvetica-Bold');
-  doc.text(b.dest_code, 130, 80);
+  doc.text(b.dest_code, 136, 80);
 
   // Flight & Gate details
   doc.fillColor('#94A3B8').fontSize(9).font('Helvetica');
@@ -109,7 +121,7 @@ export async function streamBoardingPassPdf(bookingId, res) {
   const depTimeStr = depDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   doc.fillColor('#FFFFFF').fontSize(12).font('Helvetica-Bold');
-  doc.text(b.passenger_name.toUpperCase(), 30, 190);
+  doc.text((b.passenger_name || 'PASSENGER').toUpperCase(), 30, 190);
   doc.text(boardingTime, 180, 190);
   doc.text(depTimeStr, 270, 190);
 
@@ -122,7 +134,7 @@ export async function streamBoardingPassPdf(bookingId, res) {
 
   // Booking reference and status footer
   doc.fillColor('#64748B').fontSize(8).font('Helvetica');
-  doc.text(`BOOKING REF: ${b.booking_ref}  |  STATUS: ${b.status.toUpperCase()}  |  E-TICKET: ETK-${b.id}892`, 30, 275);
+  doc.text(`BOOKING REF: ${b.booking_ref}  |  STATUS: ${(b.status || 'CONFIRMED').toUpperCase()}  |  E-TICKET: ETK-${b.id}892`, 30, 275);
 
   // Perforation line
   doc.dash(4, { space: 4 }).strokeColor('#334155');
@@ -134,12 +146,13 @@ export async function streamBoardingPassPdf(bookingId, res) {
   doc.text('PASSENGER STUB', 400, 80);
 
   doc.fillColor('#94A3B8').fontSize(8).font('Helvetica');
-  doc.text(`NAME: ${b.passenger_name}`, 400, 105);
+  doc.text(`NAME: ${b.passenger_name || 'PASSENGER'}`, 400, 105);
   doc.text(`FLIGHT: ${b.flight_number}  |  SEAT: ${b.seat_number || 'TBD'}`, 400, 120);
   doc.text(`ROUTE: ${b.origin_code} - ${b.dest_code}`, 400, 135);
 
-  // Embed QR Code
-  doc.image(qrBuffer, 420, 160, { width: 110, height: 110 });
+  // Embed QR Code with white quiet zone card
+  doc.roundedRect(410, 150, 130, 130, 6).fill('#FFFFFF');
+  doc.image(qrBuffer, 415, 155, { width: 120, height: 120 });
 
   doc.end();
 }

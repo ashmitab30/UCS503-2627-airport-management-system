@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { apiFetch } from '../../api/client.js';
 import { styles } from '../../styles.js';
+import { formatDateTime } from '../../utils/format.js';
 
 function hoursBetween(a, b) {
   if (!a || !b) return '—';
@@ -90,8 +91,8 @@ export default function StaffShifts() {
                 const busy = busyShiftId === s.id;
                 return (
                   <tr key={s.id}>
-                    <td style={styles.td}><strong>{new Date(s.start_time).toLocaleString()}</strong></td>
-                    <td style={styles.td}>{new Date(s.end_time).toLocaleString()}</td>
+                    <td style={styles.td}><strong>{formatDateTime(s.start_time)}</strong></td>
+                    <td style={styles.td}>{formatDateTime(s.end_time)}</td>
                     <td style={styles.td}>{s.area_assigned || '—'}</td>
                     <td style={styles.td}>
                       {isOpen && <span className="status-pill status-pill-green">Clocked in</span>}
@@ -124,8 +125,8 @@ export default function StaffShifts() {
             <tbody>
               {attendance.map((a) => (
                 <tr key={a.id}>
-                  <td style={styles.td}>{new Date(a.clock_in).toLocaleString()}</td>
-                  <td style={styles.td}>{a.clock_out ? new Date(a.clock_out).toLocaleString() : <span className="status-pill status-pill-green">On duty</span>}</td>
+                  <td style={styles.td}>{formatDateTime(a.clock_in)}</td>
+                  <td style={styles.td}>{a.clock_out ? formatDateTime(a.clock_out) : <span className="status-pill status-pill-green">On duty</span>}</td>
                   <td style={styles.td}>{hoursBetween(a.clock_in, a.clock_out)}</td>
                   <td style={styles.td}>{a.area_assigned || '—'}</td>
                 </tr>

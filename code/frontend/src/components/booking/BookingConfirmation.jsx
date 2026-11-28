@@ -3,8 +3,10 @@
  * issued boarding pass card and quick-action links.
  */
 import { Link } from 'react-router-dom';
+import { formatDate, formatTime, dayOffsetLabel } from '../../utils/format.js';
 
 export default function BookingConfirmation({ booking }) {
+  const offset = dayOffsetLabel(booking.scheduled_departure, booking.scheduled_arrival);
   return (
     <div style={{ maxWidth: 640, margin: '20px auto 40px' }}>
       <div style={{ textAlign: 'center', marginBottom: '24px' }}>
@@ -32,19 +34,20 @@ export default function BookingConfirmation({ booking }) {
             <div>
               <div style={{ fontSize: '2.8rem', fontWeight: 800, fontFamily: 'var(--font-display)', lineHeight: 1 }}>{booking.origin_code}</div>
               <span style={{ fontSize: '13px', opacity: 0.85, marginTop: '6px', display: 'block' }}>
-                {new Date(booking.scheduled_departure).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {formatTime(booking.scheduled_departure)}
               </span>
             </div>
             <div style={{ textAlign: 'center' }}>
               <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.04em' }}>{booking.flight_number}</span>
-              <div style={{ width: '80px', height: '2px', background: 'rgba(255,255,255,0.4)', margin: '6px 0', position: 'relative' }}>
-                <span className="material-symbols-outlined" style={{ position: 'absolute', top: '-11px', left: '32px', fontSize: '20px' }}>flight</span>
+              <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '2px' }}>{formatDate(booking.scheduled_departure)}</div>
+              <div style={{ width: '80px', height: '2px', background: 'rgba(255,255,255,0.4)', margin: '6px auto', position: 'relative' }}>
+                <span className="material-symbols-outlined" style={{ position: 'absolute', top: '-11px', left: '30px', fontSize: '20px' }}>flight</span>
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '2.8rem', fontWeight: 800, fontFamily: 'var(--font-display)', lineHeight: 1 }}>{booking.dest_code}</div>
               <span style={{ fontSize: '13px', opacity: 0.85, marginTop: '6px', display: 'block' }}>
-                {new Date(booking.scheduled_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {formatTime(booking.scheduled_arrival)}{offset ? ` (${offset})` : ''}
               </span>
             </div>
           </div>

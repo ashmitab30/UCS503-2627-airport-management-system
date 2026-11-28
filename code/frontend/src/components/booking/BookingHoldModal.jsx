@@ -4,6 +4,7 @@
  * When the hold expires it shows an expired state with a re-search prompt.
  */
 import { useState, useEffect, useRef } from 'react';
+import { formatINR, formatDate, formatTime, dayOffsetLabel } from '../../utils/format.js';
 
 const ASSISTANCE_OPTIONS = [
   { value: '', label: 'Standard Clearance', desc: 'No special assistance needed', icon: 'check_circle' },
@@ -56,7 +57,7 @@ export default function BookingHoldModal({
   const isWarning = secondsLeft !== null && secondsLeft < 90;
 
   const priceCents = seat?.price_cents ?? 0;
-  const priceFormatted = (priceCents / 100).toFixed(2);
+  const offset = dayOffsetLabel(flight?.scheduled_departure, flight?.scheduled_arrival);
 
   if (isExpired) {
     return (
@@ -111,9 +112,14 @@ export default function BookingHoldModal({
       <div className="ticket-notch-card">
         <div style={{ padding: '20px 24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px' }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem' }}>
-              {flight.flight_number}
-            </span>
+            <div>
+              <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem' }}>
+                {flight.flight_number}
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--color-primary)', fontWeight: 700, marginLeft: '10px' }}>
+                {formatDate(flight.scheduled_departure)}
+              </span>
+            </div>
             <span className="status-pill status-pill-blue">{seat?.class?.replace('_', ' ')}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
@@ -121,7 +127,7 @@ export default function BookingHoldModal({
               <div style={{ fontSize: '11px', color: 'var(--color-slate)', textTransform: 'uppercase', fontWeight: 700 }}>From</div>
               <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}>{flight.origin_code}</div>
               <div style={{ fontSize: '11px', color: 'var(--color-slate)' }}>
-                {new Date(flight.scheduled_departure).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {formatTime(flight.scheduled_departure)}
               </div>
             </div>
             <div style={{ textAlign: 'center', paddingTop: '12px' }}>
@@ -131,7 +137,7 @@ export default function BookingHoldModal({
               <div style={{ fontSize: '11px', color: 'var(--color-slate)', textTransform: 'uppercase', fontWeight: 700 }}>To</div>
               <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-secondary)', fontFamily: 'var(--font-display)' }}>{flight.dest_code}</div>
               <div style={{ fontSize: '11px', color: 'var(--color-slate)' }}>
-                {new Date(flight.scheduled_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {formatTime(flight.scheduled_arrival)}{offset ? ` (${offset})` : ''}
               </div>
             </div>
           </div>
@@ -148,7 +154,7 @@ export default function BookingHoldModal({
           </div>
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-outline)', display: 'block' }}>Total Fare</span>
-            <span style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>₹{priceFormatted}</span>
+            <span style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>{formatINR(priceCents)}</span>
           </div>
         </div>
       </div>
@@ -231,7 +237,7 @@ export default function BookingHoldModal({
         </div>
         <div style={{ padding: '12px 16px', borderRadius: '10px', background: 'var(--color-surface-low)', border: '1.5px solid rgba(194,198,216,0.5)', fontSize: '14px', color: 'var(--color-slate)', marginBottom: '16px' }}>
           <span className="material-symbols-outlined" style={{ fontSize: '16px', verticalAlign: 'middle', marginRight: '6px' }}>lock</span>
-          Mock Visa •••• 4242 — ₹{priceFormatted}
+          Mock Visa •••• 4242 — {formatINR(priceCents)}
         </div>
         {error && (
           <p style={{ color: 'var(--color-error)', fontSize: '13px', marginBottom: '12px', fontWeight: 600 }}>{error}</p>
@@ -242,7 +248,7 @@ export default function BookingHoldModal({
           disabled={loading}
           style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}
         >
-          <span>{loading ? 'Processing Payment…' : `Confirm & Pay ₹${priceFormatted}`}</span>
+          <span>{loading ? 'Processing Payment…' : `Confirm & Pay ${formatINR(priceCents)}`}</span>
           <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>verified</span>
         </button>
       </div>

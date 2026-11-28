@@ -1,3 +1,6 @@
+@tailwind components;
+@tailwind utilities;
+
 /* =====================================================================
    MERIDIAN OPS — AEROSPEHERE PRECISION DESIGN SYSTEM
    Modern High-Tech Aviation & Frosted Aero-Glassmorphism
@@ -433,6 +436,34 @@ a:hover {
   border-color: var(--color-outline);
 }
 
+/* Destructive Secondary Action Button */
+.btn-destructive-aero {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 218, 214, 0.4);
+  color: var(--color-on-error-container, #93000a);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 700;
+  border: 1.5px solid var(--color-error-container, #ffdad6);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+.btn-destructive-aero:hover:not(:disabled) {
+  background: var(--color-error-container, #ffdad6);
+  border-color: var(--color-error, #ba1a1a);
+  color: #93000a;
+}
+.btn-destructive-aero:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* =====================================================================
    TICKET NOTCH CARDS & BOARDING PASSES
    ===================================================================== */
@@ -839,4 +870,36 @@ a:hover {
 }
 .aero-table tr:hover td {
   background: rgba(241, 243, 255, 0.4);
+}
+
+/* =====================================================================
+   SHARED MODAL & DIALOG OVERLAYS (Task 16c)
+   ===================================================================== */
+.modal-backdrop,
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background-color: rgba(6, 27, 58, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 28px 32px;
+  width: 100%;
+  max-width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(6, 27, 58, 0.25);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  position: relative;
+  z-index: 1001;
 }

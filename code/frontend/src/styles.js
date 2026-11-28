@@ -278,7 +278,7 @@ export const styles = {
     color: '#ffffff',
     flexShrink: 0,
   },
-  authBrand: { fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.01em', fontFamily: fontDisplay },
+  authBrand: { fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.01em', fontFamily: fontDisplay, color: '#ffffff' },
   authBrandSub: { fontSize: '0.72rem', color: '#c4e7ff', letterSpacing: '0.08em', marginTop: 2, fontWeight: 700 },
   authHeadline: {
     fontSize: '2.5rem',
@@ -287,6 +287,7 @@ export const styles = {
     letterSpacing: '-0.025em',
     maxWidth: 480,
     fontFamily: fontDisplay,
+    color: '#ffffff',
   },
   authFootRow: { display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#c4e7ff' },
   authRight: {
@@ -351,6 +352,34 @@ export const styles = {
   pipelineStepDone: { color: colors.successText, background: colors.successBg, padding: '3px 10px', borderRadius: 999 },
   pipelineStepCurrent: { color: '#ffffff', background: colors.primary, padding: '3px 10px', borderRadius: 999 },
   pipelineStepPending: { color: colors.muted, background: colors.surfaceLow, padding: '3px 10px', borderRadius: 999 },
+
+  // ---- shared modal / dialog overlays (Task 16c) ----
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 1000,
+    backgroundColor: 'rgba(6, 27, 58, 0.6)',
+    backdropFilter: 'blur(6px)',
+    WebkitBackdropFilter: 'blur(6px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '20px',
+    overflowY: 'auto',
+  },
+  modalContent: {
+    background: '#ffffff',
+    borderRadius: '20px',
+    padding: '28px 32px',
+    width: '100%',
+    maxWidth: '540px',
+    maxHeight: '90vh',
+    overflowY: 'auto',
+    boxShadow: '0 20px 50px rgba(6, 27, 58, 0.25)',
+    border: '1px solid rgba(226, 232, 240, 0.9)',
+    position: 'relative',
+    zIndex: 1001,
+  },
 };
 
 const GOOD_STATUSES = ['on_time', 'on time', 'confirmed', 'active', 'completed', 'boarding', 'resolved', 'available', 'success'];

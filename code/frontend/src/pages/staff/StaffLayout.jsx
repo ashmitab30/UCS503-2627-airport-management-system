@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { apiFetch } from '../../api/client.js';
+import EmergencyBanner from '../../components/EmergencyBanner.jsx';
 
 // Role-specific wording and menu entries for the staff portal.
 const ROLE_META = {
@@ -16,6 +17,10 @@ export default function StaffLayout() {
   const meta = ROLE_META[user.role] || { console: 'Staff Console', unit: 'Airport Staff' };
   const canSeeTurnaround = user.role === 'ground_crew';
   const canSeeAssistance = user.role === 'ground_crew' || user.role === 'medical';
+  const canSeeGate = ['ground_crew', 'ops_manager', 'admin'].includes(user.role);
+  const canSeeBaggage = ['ground_crew', 'ops_manager', 'admin'].includes(user.role);
+  const canSeeSecurity = ['security', 'ops_manager', 'admin'].includes(user.role);
+  const canSeeSupport = ['ground_crew', 'ops_manager', 'admin'].includes(user.role);
 
   // Quick Declare Emergency modal state
   const [emergencyOpen, setEmergencyOpen] = useState(false);
@@ -69,6 +74,10 @@ export default function StaffLayout() {
   else if (path.includes('emergencies')) pageTitle = 'Emergencies';
   else if (path.includes('shifts')) pageTitle = 'My Shifts & Attendance';
   else if (path.includes('password')) pageTitle = 'Change Password';
+  else if (path.includes('gate')) pageTitle = 'Gate Boarding';
+  else if (path.includes('baggage')) pageTitle = 'Baggage Handling';
+  else if (path.includes('security')) pageTitle = 'Security Console';
+  else if (path.includes('support')) pageTitle = 'Support Chat & Escalations';
 
   return (
     <div className="admin-shell">
@@ -127,6 +136,30 @@ export default function StaffLayout() {
             </div>
           </div>
 
+          {['admin', 'ops_manager'].includes(user.role) && (
+            <div style={{ marginBottom: '16px' }}>
+              <Link
+                to="/admin"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 12px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(29, 99, 255, 0.08)',
+                  color: 'var(--color-primary)',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  border: '1px solid rgba(29, 99, 255, 0.2)',
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>arrow_back</span>
+                <span>Back to Admin Dashboard</span>
+              </Link>
+            </div>
+          )}
+
           {/* Nav Categories */}
           <nav>
             <div className="admin-nav-category">Overview</div>
@@ -146,6 +179,30 @@ export default function StaffLayout() {
               <NavLink to="/staff/assistance" className={navClass}>
                 <span className="material-symbols-outlined">accessible</span>
                 <span>Assistance Queue</span>
+              </NavLink>
+            )}
+            {canSeeGate && (
+              <NavLink to="/staff/gate" className={navClass}>
+                <span className="material-symbols-outlined">qr_code_scanner</span>
+                <span>Gate Boarding</span>
+              </NavLink>
+            )}
+            {canSeeBaggage && (
+              <NavLink to="/staff/baggage" className={navClass}>
+                <span className="material-symbols-outlined">luggage</span>
+                <span>Baggage Handling</span>
+              </NavLink>
+            )}
+            {canSeeSecurity && (
+              <NavLink to="/staff/security" className={navClass}>
+                <span className="material-symbols-outlined">shield</span>
+                <span>Security Console</span>
+              </NavLink>
+            )}
+            {canSeeSupport && (
+              <NavLink to="/staff/support" className={navClass}>
+                <span className="material-symbols-outlined">support_agent</span>
+                <span>Support Chat</span>
               </NavLink>
             )}
             <NavLink to="/staff/emergencies" className={navClass}>
@@ -236,6 +293,7 @@ export default function StaffLayout() {
 
         {/* Content Outlet */}
         <main className="admin-main-viewport">
+          <EmergencyBanner />
           <Outlet />
         </main>
       </div>

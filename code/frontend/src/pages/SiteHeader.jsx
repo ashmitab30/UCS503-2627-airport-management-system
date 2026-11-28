@@ -30,6 +30,12 @@ export default function SiteHeader() {
         <NavLink to="/my-flights" className={navClass}>
           My Flights
         </NavLink>
+        <NavLink to="/parking" className={navClass}>
+          Parking
+        </NavLink>
+        <NavLink to="/facilities" className={navClass}>
+          Facilities
+        </NavLink>
       </nav>
 
       {/* Right controls */}

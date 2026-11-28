@@ -1,3 +1,5 @@
+import { formatINR, formatDate, formatTime, dayOffsetLabel } from '../../utils/format.js';
+
 /**
  * FlightSearchResults — renders the list of matching flights with real fares per cabin class.
  * Matches Stitch screen c5c9a568520849df9dfbead3d474cfc6.
@@ -21,7 +23,14 @@ function fareCents(flight, seatClass) {
 }
 
 export default function FlightSearchResults({ flights, origin, destination, seatClass, onSelectFlight }) {
-  if (flights.length === 0) {
+  const nowMs = Date.now();
+  const visibleFlights = (flights || []).filter((f) => {
+    if (f.has_departed) return false;
+    if (['cancelled', 'departed', 'landed'].includes(f.status)) return false;
+    return new Date(f.scheduled_departure).getTime() > nowMs;
+  });
+
+  if (visibleFlights.length === 0) {
     return (
       <div className="ticket-notch-card" style={{ padding: '36px', textAlign: 'center', color: 'var(--color-slate)' }}>
         <span className="material-symbols-outlined" style={{ fontSize: '48px', color: 'var(--color-outline-variant)', marginBottom: '8px' }}>
@@ -37,7 +46,7 @@ export default function FlightSearchResults({ flights, origin, destination, seat
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.4rem', margin: 0 }}>
-          Available Flights ({flights.length})
+          Available Flights ({visibleFlights.length})
         </h2>
         <span style={{ fontSize: '13px', color: 'var(--color-slate)', fontWeight: 600 }}>
           {origin} &rarr; {destination}
@@ -45,10 +54,10 @@ export default function FlightSearchResults({ flights, origin, destination, seat
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {flights.map((f) => {
+        {visibleFlights.map((f) => {
           const priceCents = fareCents(f, seatClass);
-          const priceFormatted = (priceCents / 100).toFixed(0);
           const duration = durationLabel(f.scheduled_departure, f.scheduled_arrival);
+          const offset = dayOffsetLabel(f.scheduled_departure, f.scheduled_arrival);
 
           return (
             <div
@@ -71,6 +80,9 @@ export default function FlightSearchResults({ flights, origin, destination, seat
                     <div style={{ fontSize: '16px', fontWeight: 800, fontFamily: 'var(--font-display)' }}>
                       {f.flight_number}
                     </div>
+                    <div style={{ fontSize: '12px', color: 'var(--color-primary)', fontWeight: 700 }}>
+                      {formatDate(f.scheduled_departure)}
+                    </div>
                     <span style={{ fontSize: '12px', color: 'var(--color-slate)', fontWeight: 600 }}>
                       {f.aircraft_model || 'Airbus A320neo'} &middot; Gate {f.gate_code || 'TBD'}
                     </span>
@@ -84,7 +96,7 @@ export default function FlightSearchResults({ flights, origin, destination, seat
                       {f.origin_code}
                     </div>
                     <span style={{ fontSize: '12px', color: 'var(--color-slate)' }}>
-                      {new Date(f.scheduled_departure).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTime(f.scheduled_departure)}
                     </span>
                   </div>
 
@@ -102,9 +114,16 @@ export default function FlightSearchResults({ flights, origin, destination, seat
                     <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--color-secondary)', fontFamily: 'var(--font-display)', lineHeight: 1 }}>
                       {f.dest_code}
                     </div>
-                    <span style={{ fontSize: '12px', color: 'var(--color-slate)' }}>
-                      {new Date(f.scheduled_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--color-slate)' }}>
+                        {formatTime(f.scheduled_arrival)}
+                      </span>
+                      {offset && (
+                        <span style={{ fontSize: '10px', color: 'var(--color-error)', fontWeight: 700 }}>
+                          {offset}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -113,7 +132,7 @@ export default function FlightSearchResults({ flights, origin, destination, seat
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ fontSize: '11px', color: 'var(--color-outline)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>From</span>
                     <span style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--color-on-surface)', fontFamily: 'var(--font-display)' }}>
-                      ₹{priceFormatted}
+                      {formatINR(priceCents)}
                     </span>
                     <span style={{ fontSize: '11px', color: 'var(--color-slate)', display: 'block', textTransform: 'capitalize' }}>
                       {seatClass.replace('_', ' ')}

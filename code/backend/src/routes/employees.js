@@ -3,6 +3,7 @@ import { pool } from '../db/pool.js';
 import { hashPassword } from '../utils/password.js';
 import { sendStaffCredentialsEmail } from '../utils/mail.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
+import { attachDevPassword } from '../utils/devPassword.js';
 
 export const employeesRouter = Router();
 
@@ -60,10 +61,7 @@ employeesRouter.post('/', authenticate, requireRole('admin'), async (req, res) =
 
     await client.query('COMMIT');
 
-    // Best-effort: if SMTP isn't configured or sending fails, we still
-    // return tempPassword in the response so the admin can relay it
-    // manually — email is a convenience layer, not the only path.
-    const emailSent = await sendStaffCredentialsEmail({
+    const mailResult = await sendStaffCredentialsEmail({
       to: user.email,
       name: user.name,
       email: user.email,
@@ -71,17 +69,84 @@ employeesRouter.post('/', authenticate, requireRole('admin'), async (req, res) =
       role: user.role,
     });
 
-    res.status(201).json({
-      employee: { ...employeeResult.rows[0], user },
-      tempPassword, // shown once — not retrievable after this response
-      emailSent,
-    });
+    if (process.env.NODE_ENV === 'production' && !mailResult.sent) {
+      return res.status(500).json({ error: 'Could not send employee credentials email' });
+    }
+
+    res.status(201).json(
+      attachDevPassword(
+        {
+          employee: { ...employeeResult.rows[0], user },
+          emailSent: mailResult.sent,
+          message: `Staff member registered; credentials have been emailed to ${user.email}`,
+        },
+        tempPassword,
+        mailResult.sent,
+        mailResult
+      )
+    );
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('create employee error:', err.message);
     res.status(500).json({ error: 'Could not create employee' });
   } finally {
     client.release();
+  }
+});
+
+// POST /employees/:id/resend-credentials — admin only.
+// Generates a new random temporary password, updates password_hash,
+// emails credentials to the employee, and NEVER returns the password in response.
+employeesRouter.post('/:id/resend-credentials', authenticate, requireRole('admin'), async (req, res) => {
+  const employeeId = parseInt(req.params.id, 10);
+  if (isNaN(employeeId)) return res.status(400).json({ error: 'Invalid employee ID' });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT e.id, e.user_id, u.name, u.email, u.role
+       FROM employee e
+       JOIN "user" u ON u.id = e.user_id
+       WHERE e.id = $1`,
+      [employeeId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    const emp = rows[0];
+    const tempPassword = generateTempPassword();
+    const newHash = await hashPassword(tempPassword);
+
+    await pool.query('UPDATE "user" SET password_hash = $1 WHERE id = $2', [newHash, emp.user_id]);
+
+    const mailResult = await sendStaffCredentialsEmail({
+      to: emp.email,
+      name: emp.name,
+      email: emp.email,
+      tempPassword,
+      role: emp.role,
+    });
+
+    if (process.env.NODE_ENV === 'production' && !mailResult.sent) {
+      return res.status(500).json({ error: 'Failed to send credentials email' });
+    }
+
+    res.json(
+      attachDevPassword(
+        {
+          ok: true,
+          emailSent: mailResult.sent,
+          message: `Credentials resent to ${emp.email}`,
+        },
+        tempPassword,
+        mailResult.sent,
+        mailResult
+      )
+    );
+  } catch (err) {
+    console.error('resend credentials error:', err.message);
+    res.status(500).json({ error: 'Could not resend credentials' });
   }
 });
 

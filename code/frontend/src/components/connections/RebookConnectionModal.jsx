@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { formatINR, formatDate, formatTime, dayOffsetLabel, formatFareDifference } from '../../utils/format.js';
 
 export default function RebookConnectionModal({ connection, isOpen, onClose, onSuccess }) {
   const { token } = useAuth();
@@ -181,9 +182,7 @@ export default function RebookConnectionModal({ connection, isOpen, onClose, onS
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scheduled Window</span>
                   <span className="text-xs font-semibold text-slate-800 line-through decoration-rose-500 decoration-2">
-                    {new Date(connection.outbound_departure).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    {' – '}
-                    {new Date(connection.outbound_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {formatDate(connection.outbound_departure)}, {formatTime(connection.outbound_departure)} – {formatTime(connection.outbound_arrival)}
                   </span>
                 </div>
                 <div className="flex flex-col">
@@ -199,7 +198,7 @@ export default function RebookConnectionModal({ connection, isOpen, onClose, onS
             <div className="flex items-start gap-2 text-xs text-slate-600 bg-amber-50/70 border border-amber-200/60 p-2.5 rounded-lg">
               <span className="material-symbols-outlined text-[16px] text-amber-600 shrink-0 mt-0.5">warning</span>
               <span>
-                Selecting an alternative flight will immediately cancel <strong>{connection.outbound_flight_number}</strong> and reissue your seat on the chosen flight under ₹0 protection.
+                Selecting an alternative flight will immediately cancel <strong>{connection.outbound_flight_number}</strong> and reissue your seat on the chosen flight with zero rebooking fee (only fare difference applies).
               </span>
             </div>
           </div>
@@ -295,6 +294,9 @@ export default function RebookConnectionModal({ connection, isOpen, onClose, onS
                               <span className="text-sm font-extrabold text-blue-700 font-display">
                                 {opt.flight_number}
                               </span>
+                              <span className="text-xs font-bold text-slate-700">
+                                {formatDate(opt.scheduled_departure)}
+                              </span>
                               <span className="text-slate-300">•</span>
                               <span className="text-xs text-slate-600 font-medium">{opt.aircraft_model}</span>
                               {idx === 0 && (
@@ -311,7 +313,7 @@ export default function RebookConnectionModal({ connection, isOpen, onClose, onS
                             <div className="flex items-center gap-4 mt-1">
                               <div className="flex flex-col">
                                 <span className="text-base font-bold text-slate-900 font-display">
-                                  {dep.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  {formatTime(dep)}
                                 </span>
                                 <span className="text-[11px] text-slate-500">{opt.origin_code}</span>
                               </div>
@@ -328,9 +330,16 @@ export default function RebookConnectionModal({ connection, isOpen, onClose, onS
                               </div>
 
                               <div className="flex flex-col">
-                                <span className="text-base font-bold text-slate-900 font-display">
-                                  {arr.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-base font-bold text-slate-900 font-display">
+                                    {formatTime(arr)}
+                                  </span>
+                                  {dayOffsetLabel(dep, arr) && (
+                                    <span className="text-[10px] text-rose-600 font-bold">
+                                      {dayOffsetLabel(dep, arr)}
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-[11px] text-slate-500">{opt.dest_code}</span>
                               </div>
                             </div>
@@ -346,8 +355,19 @@ export default function RebookConnectionModal({ connection, isOpen, onClose, onS
                               ({opt.preferred_seats_available || opt.total_seats_available} seats left)
                             </span>
                           </div>
-                          <div className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200/60">
-                            ₹0 <span className="text-[10px] font-normal opacity-90">(Complimentary protection)</span>
+                          <div
+                            className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                              opt.fare_difference_cents > 0
+                                ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                : opt.fare_difference_cents < 0
+                                ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                                : 'bg-slate-100 text-slate-800 border-slate-300'
+                            }`}
+                          >
+                            <span>{formatFareDifference(opt.fare_difference_cents)}</span>
+                            <span className="text-[10px] font-normal opacity-90 block sm:inline sm:ml-1">
+                              • No rebooking fee
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -357,6 +377,34 @@ export default function RebookConnectionModal({ connection, isOpen, onClose, onS
               </div>
             )}
           </div>
+
+          {/* Confirm Step Fare Difference Callout */}
+          {selectedOption && (
+            <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-[20px]">receipt_long</span>
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-900 block">
+                    Confirm Fare Summary for Alternative Flight {selectedOption.flight_number}
+                  </span>
+                  <span className="text-[11px] text-slate-600">
+                    Zero Rebooking Fee Guarantee applied • Only fare difference is settled
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <span className="text-sm font-extrabold text-slate-900 font-display">
+                  {formatFareDifference(selectedOption.fare_difference_cents)}
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 uppercase tracking-wider">
+                  ₹0 Fee
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Modal Footer */}
@@ -390,7 +438,7 @@ export default function RebookConnectionModal({ connection, isOpen, onClose, onS
                 <>
                   <span className="material-symbols-outlined text-[16px]">airline_stops</span>
                   <span>
-                    Confirm Rebooking {selectedOption ? `(${selectedOption.flight_number})` : ''}
+                    Confirm Rebooking {selectedOption ? `(${selectedOption.flight_number} • ${formatFareDifference(selectedOption.fare_difference_cents)})` : ''}
                   </span>
                 </>
               )}

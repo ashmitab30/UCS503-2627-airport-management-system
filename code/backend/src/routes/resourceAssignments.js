@@ -3,20 +3,44 @@ import { z } from 'zod';
 import { pool } from '../db/pool.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { checkResourceConflict } from '../services/resourceConflict.js';
+import { hasDeparted } from '../services/flightTime.js';
 import { ADVISORY_LOCK_DOMAINS, ADMIN_OPS_ROLES } from '../constants/index.js';
 import { validate, paginationQuerySchema } from '../middleware/validate.js';
 
 export const resourceAssignmentsRouter = Router();
 
-const createResourceAssignmentSchema = z.object({
-  resource_id: z.number().int().positive('resource_id must be a positive integer'),
-  flight_id: z.number().int().positive('flight_id must be a positive integer'),
-  start_time: z.string().datetime({ offset: true }).or(z.string().min(1)),
-  end_time: z.string().datetime({ offset: true }).or(z.string().min(1)),
-}).refine(
-  (data) => new Date(data.start_time) < new Date(data.end_time),
-  { message: 'end_time must be after start_time', path: ['end_time'] }
-);
+const dateTimeSchema = z
+  .string()
+  .refine(
+    (val) => {
+      if (typeof val !== 'string' || !val.trim()) return false;
+      const isoOrLocal = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?$/;
+      if (!isoOrLocal.test(val)) return false;
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return false;
+      const [datePart] = val.split('T');
+      const [y, m, day] = datePart.split('-').map(Number);
+      if (m < 1 || m > 12 || day < 1 || day > 31) return false;
+      return true;
+    },
+    { message: 'Invalid date/time format. Expected ISO string or YYYY-MM-DDTHH:mm' }
+  );
+
+const createResourceAssignmentSchema = z
+  .object({
+    resource_id: z.number().int('resource_id must be an integer').positive('resource_id must be a positive integer'),
+    flight_id: z.number().int('flight_id must be an integer').positive('flight_id must be a positive integer'),
+    start_time: dateTimeSchema,
+    end_time: dateTimeSchema,
+  })
+  .refine(
+    (data) => {
+      const s = new Date(data.start_time).getTime();
+      const e = new Date(data.end_time).getTime();
+      return s < e;
+    },
+    { message: 'end_time must be after start_time', path: ['end_time'] }
+  );
 
 // POST /resource-assignments — admin, ops_manager. Race-safe via pg_advisory_xact_lock on resource_id.
 resourceAssignmentsRouter.post(
@@ -47,10 +71,23 @@ resourceAssignmentsRouter.post(
         return res.status(409).json({ error: 'Resource is under maintenance and cannot be assigned' });
       }
 
-      const flightExists = await client.query('SELECT id FROM flight WHERE id = $1', [flight_id]);
+      const flightExists = await client.query(
+        'SELECT id, status, scheduled_departure, actual_departure FROM flight WHERE id = $1',
+        [flight_id]
+      );
       if (flightExists.rows.length === 0) {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'Flight not found' });
+      }
+
+      const flight = flightExists.rows[0];
+      if (flight.status === 'cancelled') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Cannot assign resources to a cancelled flight', code: 'FLIGHT_CANCELLED' });
+      }
+      if (hasDeparted(flight)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Cannot assign resources to a departed flight', code: 'FLIGHT_DEPARTED' });
       }
 
       const conflictResult = await checkResourceConflict(resource_id, start_time, end_time, null, client);
@@ -113,12 +150,13 @@ resourceAssignmentsRouter.get(
     try {
       const { rows } = await pool.query(
         `SELECT id, resource_id, flight_id, start_time, end_time
-         FROM resource_assignment ${where}
-         ORDER BY start_time
+         FROM resource_assignment
+         ${where}
+         ORDER BY start_time DESC
          LIMIT ${limitParam} OFFSET ${offsetParam}`,
         params
       );
-      res.json({ resource_assignments: rows, limit, offset });
+      res.json({ resource_assignments: rows });
     } catch (err) {
       console.error('list resource assignments error:', err.message);
       res.status(500).json({ error: 'Could not list resource assignments' });
@@ -126,19 +164,19 @@ resourceAssignmentsRouter.get(
   }
 );
 
-// DELETE /resource-assignments/:id — admin, ops_manager.
+// DELETE /resource-assignments/:id — admin, ops_manager. Releases a resource assignment early.
 resourceAssignmentsRouter.delete(
   '/:id',
   authenticate,
   requireRole(...ADMIN_OPS_ROLES),
   async (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
-
+    const { id } = req.params;
     try {
-      const { rows } = await pool.query('DELETE FROM resource_assignment WHERE id = $1 RETURNING id', [id]);
-      if (rows.length === 0) return res.status(404).json({ error: 'Resource assignment not found' });
-      res.status(204).send();
+      const { rowCount } = await pool.query('DELETE FROM resource_assignment WHERE id = $1', [id]);
+      if (rowCount === 0) {
+        return res.status(404).json({ error: 'Assignment not found' });
+      }
+      res.json({ message: 'Resource assignment deleted successfully' });
     } catch (err) {
       console.error('delete resource assignment error:', err.message);
       res.status(500).json({ error: 'Could not delete resource assignment' });

@@ -1,7 +1,10 @@
 /**
  * FlightSearchFilters — search bar matching the Stitch "Flight Booking & Dispatch" header panel.
- * Handles origin/destination IATA inputs, date picker, class selector, and swap button.
+ * Handles origin/destination searchable comboboxes, DatePicker, class selector, and swap button.
  */
+import AirportSelect from '../common/AirportSelect.jsx';
+import DatePicker from '../common/DatePicker.jsx';
+
 export default function FlightSearchFilters({
   origin,
   destination,
@@ -22,10 +25,20 @@ export default function FlightSearchFilters({
     { value: 'first', label: 'First Class' },
   ];
 
+  const isSameAirport = Boolean(
+    origin && destination && origin.trim().toUpperCase() === destination.trim().toUpperCase()
+  );
+
+  function handleFormSubmit(e) {
+    e.preventDefault();
+    if (isSameAirport) return;
+    if (onSubmit) onSubmit(e);
+  }
+
   return (
     <div className="flight-search-bar" style={{ marginBottom: '24px' }}>
       <form
-        onSubmit={onSubmit}
+        onSubmit={handleFormSubmit}
         style={{
           display: 'grid',
           gridTemplateColumns: '1fr 44px 1fr 1fr 1fr 180px',
@@ -33,7 +46,7 @@ export default function FlightSearchFilters({
           alignItems: 'center',
         }}
       >
-        {/* Origin */}
+        {/* Origin Airport */}
         <div className="search-field-module">
           <span className="field-sublabel">
             <span className="material-symbols-outlined" style={{ fontSize: '15px', color: 'var(--color-primary)' }}>
@@ -41,17 +54,11 @@ export default function FlightSearchFilters({
             </span>
             From Airport
           </span>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span className="iata-tag-bold">{origin}</span>
-            <input
-              className="field-input-naked"
-              value={origin}
-              onChange={(e) => onOriginChange(e.target.value.toUpperCase())}
-              placeholder="DEL"
-              maxLength={4}
-              aria-label="Origin airport IATA code"
-            />
-          </div>
+          <AirportSelect
+            value={origin}
+            onChange={(code) => onOriginChange(code)}
+            placeholder="Select origin"
+          />
         </div>
 
         {/* Swap */}
@@ -78,7 +85,7 @@ export default function FlightSearchFilters({
           </button>
         </div>
 
-        {/* Destination */}
+        {/* Destination Airport */}
         <div className="search-field-module">
           <span className="field-sublabel">
             <span className="material-symbols-outlined" style={{ fontSize: '15px', color: 'var(--color-secondary)' }}>
@@ -86,20 +93,14 @@ export default function FlightSearchFilters({
             </span>
             To Airport
           </span>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span className="iata-tag-bold" style={{ color: 'var(--color-secondary)' }}>{destination}</span>
-            <input
-              className="field-input-naked"
-              value={destination}
-              onChange={(e) => onDestinationChange(e.target.value.toUpperCase())}
-              placeholder="BOM"
-              maxLength={4}
-              aria-label="Destination airport IATA code"
-            />
-          </div>
+          <AirportSelect
+            value={destination}
+            onChange={(code) => onDestinationChange(code)}
+            placeholder="Select destination"
+          />
         </div>
 
-        {/* Date */}
+        {/* Departure Date */}
         <div className="search-field-module">
           <span className="field-sublabel">
             <span className="material-symbols-outlined" style={{ fontSize: '15px', color: 'var(--color-primary)' }}>
@@ -107,12 +108,12 @@ export default function FlightSearchFilters({
             </span>
             Departure Date
           </span>
-          <input
-            type="date"
-            className="field-input-naked"
+          <DatePicker
             value={date}
-            onChange={(e) => onDateChange(e.target.value)}
-            aria-label="Departure date"
+            onChange={(val) => onDateChange(val)}
+            minDate="today"
+            placeholder="Select date"
+            clearable
           />
         </div>
 
@@ -137,13 +138,41 @@ export default function FlightSearchFilters({
           </select>
         </div>
 
-        {/* Submit */}
-        <button type="submit" className="btn-primary-aero" style={{ height: '54px' }} disabled={loading}>
+        {/* Submit Button */}
+        <button
+          type="submit"
+          className="btn-primary-aero"
+          style={{ height: '54px' }}
+          disabled={loading || isSameAirport}
+        >
           <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>search</span>
           <span>{loading ? 'Searching…' : 'Find Flights'}</span>
         </button>
       </form>
+
+      {/* Inline validation when origin and destination are identical */}
+      {isSameAirport && (
+        <div
+          role="alert"
+          style={{
+            marginTop: '10px',
+            padding: '8px 14px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--color-error-container)',
+            color: 'var(--color-on-error-container)',
+            fontSize: '12.5px',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+            error
+          </span>
+          <span>From and To airports cannot be the same. Please choose different airports.</span>
+        </div>
+      )}
     </div>
   );
 }
-
