@@ -5,4 +5,6 @@ export default {
   // default transform assumes CommonJS, so we tell it to treat .js as ESM
   // and run with `node --experimental-vm-modules` (see package.json "test" script).
   transform: {},
+  setupFiles: ['./tests/setupEnv.js'],
+  globalSetup: './tests/globalSetup.js',
 };

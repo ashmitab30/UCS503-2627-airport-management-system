@@ -9,6 +9,7 @@ describe('Step 0 Concurrency, State Machine & Permissions Tests (against local P
   let testFlight;
   let testSeat;
   let testEmployee;
+  let staffUserId;
   let testResource;
 
   beforeAll(async () => {
@@ -26,6 +27,7 @@ describe('Step 0 Concurrency, State Machine & Permissions Tests (against local P
        VALUES ('Staff User', 'staff_' || gen_random_uuid() || '@example.com', 'dummy_hash', 'ground_crew')
        RETURNING id`
     );
+    staffUserId = staffUser.rows[0].id;
     const empRes = await pool.query(
       `INSERT INTO employee (user_id, department, role_title)
        VALUES ($1, 'Ramp Operations', 'Ramp Agent')
@@ -77,6 +79,9 @@ describe('Step 0 Concurrency, State Machine & Permissions Tests (against local P
     if (testEmployee) {
       await pool.query('DELETE FROM shift WHERE employee_id = $1', [testEmployee.id]);
       await pool.query('DELETE FROM employee WHERE id = $1', [testEmployee.id]);
+    }
+    if (staffUserId) {
+      await pool.query('DELETE FROM "user" WHERE id = $1', [staffUserId]);
     }
     if (testResource) {
       await pool.query('DELETE FROM resource_assignment WHERE resource_id = $1', [testResource.id]);

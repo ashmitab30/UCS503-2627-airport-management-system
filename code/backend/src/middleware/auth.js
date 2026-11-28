@@ -4,10 +4,17 @@ import { verifyToken } from '../utils/jwt.js';
 // present. Does NOT reject the request on its own — pair it with
 // requireAuth or requireRole below depending on the route.
 export function authenticate(req, res, next) {
+  let token = null;
   const header = req.headers.authorization || '';
-  const [scheme, token] = header.split(' ');
+  const [scheme, bearerToken] = header.split(' ');
 
-  if (scheme !== 'Bearer' || !token) {
+  if (scheme === 'Bearer' && bearerToken) {
+    token = bearerToken;
+  } else if (req.query && req.query.token) {
+    token = req.query.token;
+  }
+
+  if (!token) {
     req.user = null;
     return next();
   }

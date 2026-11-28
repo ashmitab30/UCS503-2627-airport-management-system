@@ -1,0 +1,142 @@
+@import 'react-day-picker/dist/style.css';
+
+/* =====================================================================
+   MERIDIAN OPS — DATEPICKER CUSTOM STYLES
+   Frosted Aero Glass & Precision Avionics Calendar Theme
+   ===================================================================== */
+
+.meridian-datepicker-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.meridian-datepicker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-on-surface);
+  cursor: pointer;
+  text-align: left;
+}
+
+.meridian-datepicker-trigger:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.meridian-datepicker-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 100;
+  background-color: #ffffff;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
+  padding: 14px;
+  animation: meridianFadeIn 0.15s ease-out;
+}
+
+@keyframes meridianFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* React DayPicker Theme Overrides */
+.meridian-datepicker-popover .rdp {
+  margin: 0;
+  --rdp-cell-size: 38px;
+  --rdp-accent-color: var(--color-primary);
+  --rdp-background-color: var(--color-surface-container);
+  font-family: var(--font-body);
+  color: var(--color-on-surface);
+}
+
+.meridian-datepicker-popover .rdp-caption_label {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-on-surface);
+}
+
+.meridian-datepicker-popover .rdp-nav_button {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+  transition: background-color 0.15s ease;
+}
+
+.meridian-datepicker-popover .rdp-nav_button:hover {
+  background-color: var(--color-surface-high);
+}
+
+.meridian-datepicker-popover .rdp-head_cell {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-outline);
+  letter-spacing: 0.05em;
+}
+
+.meridian-datepicker-popover .rdp-day {
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all 0.12s ease;
+}
+
+.meridian-datepicker-popover .rdp-day:hover:not(.rdp-day_selected):not(.rdp-day_disabled) {
+  background-color: var(--color-surface-container);
+  color: var(--color-primary);
+}
+
+.meridian-datepicker-popover .rdp-day_selected,
+.meridian-datepicker-popover .rdp-day_selected:hover {
+  background-color: var(--color-primary) !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(0, 80, 203, 0.35);
+}
+
+.meridian-datepicker-popover .rdp-day_today:not(.rdp-day_selected) {
+  font-weight: 800;
+  color: var(--color-primary);
+  position: relative;
+}
+
+.meridian-datepicker-popover .rdp-day_today:not(.rdp-day_selected)::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--color-primary);
+}
+
+.meridian-datepicker-popover .rdp-day_disabled {
+  opacity: 0.28;
+  cursor: not-allowed !important;
+  text-decoration: line-through;
+}
+
+.meridian-datepicker-popover .rdp-day_outside {
+  opacity: 0.35;
+}

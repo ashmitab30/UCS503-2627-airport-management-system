@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { apiFetch } from '../../api/client.js';
 import { styles, colors } from '../../styles.js';
+import { formatDate } from '../../utils/format.js';
 
 export default function AdminPassengers() {
   const { token } = useAuth();
@@ -36,7 +37,7 @@ export default function AdminPassengers() {
                   <td style={{ padding: '0.5rem' }}>{p.name}</td>
                   <td style={{ padding: '0.5rem' }}>{p.email}</td>
                   <td style={{ padding: '0.5rem' }}>{p.booking_count}</td>
-                  <td style={{ padding: '0.5rem' }}>{new Date(p.created_at).toLocaleDateString()}</td>
+                  <td style={{ padding: '0.5rem' }}>{formatDate(p.created_at)}</td>
                 </tr>
               ))}
               {passengers.length === 0 && (

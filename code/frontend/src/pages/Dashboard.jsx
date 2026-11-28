@@ -8,6 +8,16 @@ import { TurnaroundBoard } from './OpsCore.jsx';
 import AssistanceQueue from './AssistanceQueue.jsx';
 import EmergencyBoard from './EmergencyBoard.jsx';
 import SiteHeader from './SiteHeader.jsx';
+import AirportSelect from '../components/common/AirportSelect.jsx';
+import DatePicker from '../components/common/DatePicker.jsx';
+import { formatDate, formatTime, formatDateTime, dayOffsetLabel } from '../utils/format.js';
+import {
+  STAFF_ROLE_OPTIONS,
+  DEPARTMENT_OPTIONS,
+  ROLE_DEFAULT_DEPARTMENT,
+  ROLE_TITLE_OPTIONS,
+  CERTIFICATION_OPTIONS,
+} from '../constants/staffOptions.js';
 
 const STAFF_ROLES = ['ground_crew', 'security', 'medical', 'ops_manager', 'admin'];
 
@@ -35,6 +45,10 @@ export default function Dashboard() {
   const [searchDest, setSearchDest] = useState('BOM');
   const [searchDate, setSearchDate] = useState('');
 
+  const isSameAirport = Boolean(
+    searchOrigin && searchDest && searchOrigin.trim().toUpperCase() === searchDest.trim().toUpperCase()
+  );
+
   function handleSwapAirports() {
     const temp = searchOrigin;
     setSearchOrigin(searchDest);
@@ -43,6 +57,7 @@ export default function Dashboard() {
 
   function handleQuickSearch(e) {
     e.preventDefault();
+    if (isSameAirport) return;
     navigate(`/book?origin=${encodeURIComponent(searchOrigin)}&dest=${encodeURIComponent(searchDest)}${searchDate ? `&date=${encodeURIComponent(searchDate)}` : ''}`);
   }
 
@@ -56,7 +71,7 @@ export default function Dashboard() {
             setRecentBooking(data.bookings[0]);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [user, token]);
 
@@ -126,7 +141,7 @@ export default function Dashboard() {
 
       {/* Main Content Area */}
       <main style={{ flex: 1, maxWidth: 1360, width: '100%', margin: '0 auto', padding: '2rem 1.5rem 4rem' }}>
-        
+
         {/* ============================================================== */}
         {/* PASSENGER VIEW                                                 */}
         {/* ============================================================== */}
@@ -168,16 +183,11 @@ export default function Dashboard() {
                     <span className="material-symbols-outlined" style={{ fontSize: '15px', color: 'var(--color-primary)' }}>flight_takeoff</span>
                     From Airport
                   </span>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <span className="iata-tag-bold">{searchOrigin}</span>
-                    <input
-                      className="field-input-naked"
-                      value={searchOrigin}
-                      onChange={(e) => setSearchOrigin(e.target.value.toUpperCase())}
-                      placeholder="Origin Code"
-                      maxLength={4}
-                    />
-                  </div>
+                  <AirportSelect
+                    value={searchOrigin}
+                    onChange={setSearchOrigin}
+                    placeholder="Select origin"
+                  />
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -208,16 +218,11 @@ export default function Dashboard() {
                     <span className="material-symbols-outlined" style={{ fontSize: '15px', color: 'var(--color-secondary)' }}>flight_land</span>
                     To Airport
                   </span>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <span className="iata-tag-bold" style={{ color: 'var(--color-secondary)' }}>{searchDest}</span>
-                    <input
-                      className="field-input-naked"
-                      value={searchDest}
-                      onChange={(e) => setSearchDest(e.target.value.toUpperCase())}
-                      placeholder="Dest Code"
-                      maxLength={4}
-                    />
-                  </div>
+                  <AirportSelect
+                    value={searchDest}
+                    onChange={setSearchDest}
+                    placeholder="Select destination"
+                  />
                 </div>
 
                 <div className="search-field-module">
@@ -225,19 +230,48 @@ export default function Dashboard() {
                     <span className="material-symbols-outlined" style={{ fontSize: '15px', color: 'var(--color-primary)' }}>calendar_month</span>
                     Departure Date
                   </span>
-                  <input
-                    type="date"
-                    className="field-input-naked"
+                  <DatePicker
                     value={searchDate}
-                    onChange={(e) => setSearchDate(e.target.value)}
+                    onChange={setSearchDate}
+                    minDate="today"
+                    placeholder="Select date"
+                    clearable
                   />
                 </div>
 
-                <button type="submit" className="btn-primary-aero" style={{ height: '54px' }}>
+                <button
+                  type="submit"
+                  className="btn-primary-aero"
+                  style={{ height: '54px' }}
+                  disabled={isSameAirport}
+                >
                   <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>search</span>
                   <span>Search Flights</span>
                 </button>
               </form>
+
+              {isSameAirport && (
+                <div
+                  role="alert"
+                  style={{
+                    marginTop: '10px',
+                    padding: '8px 14px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--color-error-container)',
+                    color: 'var(--color-on-error-container)',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                    error
+                  </span>
+                  <span>From and To airports cannot be the same. Please choose different airports.</span>
+                </div>
+              )}
             </div>
 
             {/* Split Visual Deck */}
@@ -297,13 +331,16 @@ export default function Dashboard() {
                             {recentBooking.origin_code}
                           </div>
                           <div style={{ fontSize: '12px', color: 'var(--color-on-surface-variant)', marginTop: '4px' }}>
-                            {new Date(recentBooking.scheduled_departure).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatTime(recentBooking.scheduled_departure)}
                           </div>
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                           <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-secondary)', fontFamily: 'var(--font-display)' }}>
                             {recentBooking.flight_number}
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--color-primary)', fontWeight: 700 }}>
+                            {formatDate(recentBooking.scheduled_departure)}
                           </span>
                           <span className="material-symbols-outlined" style={{ color: 'var(--color-outline)', transform: 'rotate(90deg)', margin: '4px 0' }}>
                             flight
@@ -316,7 +353,7 @@ export default function Dashboard() {
                             {recentBooking.dest_code}
                           </div>
                           <div style={{ fontSize: '12px', color: 'var(--color-on-surface-variant)', marginTop: '4px' }}>
-                            {new Date(recentBooking.scheduled_arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatTime(recentBooking.scheduled_arrival)}{dayOffsetLabel(recentBooking.scheduled_departure, recentBooking.scheduled_arrival) ? ` (${dayOffsetLabel(recentBooking.scheduled_departure, recentBooking.scheduled_arrival)})` : ''}
                           </div>
                         </div>
                       </div>
@@ -618,8 +655,8 @@ export function MyShifts({ token }) {
                 const clockedIn = a && !a.clock_out;
                 return (
                   <tr key={s.id}>
-                    <td><strong>{new Date(s.start_time).toLocaleString()}</strong></td>
-                    <td>{new Date(s.end_time).toLocaleString()}</td>
+                    <td><strong>{formatDateTime(s.start_time)}</strong></td>
+                    <td>{formatDateTime(s.end_time)}</td>
                     <td>
                       <span className="status-pill status-pill-blue">
                         {s.area_assigned || 'Terminal General'}
@@ -771,7 +808,7 @@ export function ShiftScheduler({ token }) {
               <ul style={{ margin: '8px 0 0', paddingLeft: '20px', fontSize: '13px' }}>
                 {conflicts.map((c) => (
                   <li key={c.id}>
-                    Shift #{c.id}: {new Date(c.start_time).toLocaleString()} – {new Date(c.end_time).toLocaleString()}
+                    Shift #{c.id}: {formatDateTime(c.start_time)} – {formatDateTime(c.end_time)}
                   </li>
                 ))}
               </ul>
@@ -793,11 +830,20 @@ export function ShiftScheduler({ token }) {
 export function StaffManagement({ token }) {
   const [employees, setEmployees] = useState([]);
   const [form, setForm] = useState({
-    name: '', email: '', role: 'ground_crew', department: '', role_title: '', certification: '',
+    name: '',
+    email: '',
+    role: 'ground_crew',
+    department: 'Ground Operations',
+    role_title: 'Apron Marshaller',
+    certification: 'None',
   });
   const [error, setError] = useState(null);
   const [created, setCreated] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [resendingId, setResendingId] = useState(null);
+  const [resendStatus, setResendStatus] = useState({});
+  const [cooldowns, setCooldowns] = useState({});
+  const [copiedDevPass, setCopiedDevPass] = useState(null);
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -810,6 +856,18 @@ export function StaffManagement({ token }) {
 
   useEffect(() => { loadEmployees(); }, [loadEmployees]);
 
+  function handleRoleChange(newRole) {
+    const defaultDept = ROLE_DEFAULT_DEPARTMENT[newRole] || DEPARTMENT_OPTIONS[0];
+    const validTitles = ROLE_TITLE_OPTIONS[newRole] || [];
+    const currentTitleValid = validTitles.includes(form.role_title);
+    setForm((prev) => ({
+      ...prev,
+      role: newRole,
+      department: defaultDept,
+      role_title: currentTitleValid ? prev.role_title : (validTitles[0] || ''),
+    }));
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
@@ -818,12 +876,60 @@ export function StaffManagement({ token }) {
     try {
       const result = await apiFetch('/employees', { method: 'POST', token, body: form });
       setCreated(result);
-      setForm({ name: '', email: '', role: 'ground_crew', department: '', role_title: '', certification: '' });
+      setForm({
+        name: '',
+        email: '',
+        role: 'ground_crew',
+        department: 'Ground Operations',
+        role_title: 'Apron Marshaller',
+        certification: 'None',
+      });
       loadEmployees();
     } catch (err) {
       setError(err.message);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleResendCredentials(employeeId) {
+    setResendingId(employeeId);
+    setResendStatus((prev) => ({ ...prev, [employeeId]: null }));
+    try {
+      const res = await apiFetch(`/employees/${employeeId}/resend-credentials`, {
+        method: 'POST',
+        token,
+      });
+      const targetEmp = employees.find((emp) => emp.id === employeeId);
+      setResendStatus((prev) => ({
+        ...prev,
+        [employeeId]: {
+          error: false,
+          message: res.message || 'Credentials resent via email.',
+          devTempPassword: res.devTempPassword,
+          email: targetEmp?.email,
+        },
+      }));
+      setCooldowns((prev) => ({ ...prev, [employeeId]: 30 }));
+      const timer = setInterval(() => {
+        setCooldowns((prev) => {
+          const currentVal = (prev[employeeId] || 0) - 1;
+          if (currentVal <= 0) {
+            clearInterval(timer);
+            const copy = { ...prev };
+            delete copy[employeeId];
+            return copy;
+          }
+          return { ...prev, [employeeId]: currentVal };
+        });
+      }, 1000);
+    } catch (err) {
+      setResendStatus((prev) => ({
+        ...prev,
+        [employeeId]: { error: true, message: err.message || 'Failed to resend credentials' },
+      }));
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -854,37 +960,103 @@ export function StaffManagement({ token }) {
           </label>
           <label style={styles.label}>
             <span>Designation Role</span>
-            <select style={styles.select} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option value="ground_crew">Ground Crew</option>
-              <option value="security">Security</option>
-              <option value="medical">Medical</option>
-              <option value="ops_manager">Ops Manager</option>
-              <option value="admin">Administrator</option>
+            <select style={styles.select} value={form.role} onChange={(e) => handleRoleChange(e.target.value)}>
+              {STAFF_ROLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </label>
           <label style={styles.label}>
             <span>Department</span>
-            <input style={styles.input} placeholder="e.g. Ground Operations / Medical Unit" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} required />
+            <select
+              style={styles.select}
+              value={form.department}
+              onChange={(e) => setForm({ ...form, department: e.target.value })}
+              required
+            >
+              {DEPARTMENT_OPTIONS.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
           </label>
           <label style={styles.label}>
             <span>Role Title</span>
-            <input style={styles.input} placeholder="e.g. Apron Marshaller Lead" value={form.role_title} onChange={(e) => setForm({ ...form, role_title: e.target.value })} required />
+            <select
+              style={styles.select}
+              value={form.role_title}
+              onChange={(e) => setForm({ ...form, role_title: e.target.value })}
+              required
+            >
+              {(ROLE_TITLE_OPTIONS[form.role] || []).map((title) => (
+                <option key={title} value={title}>
+                  {title}
+                </option>
+              ))}
+            </select>
           </label>
           <label style={styles.label}>
-            <span>Operational Certification (optional)</span>
-            <input style={styles.input} placeholder="e.g. CPR / First Aid, Basic Ramp" value={form.certification} onChange={(e) => setForm({ ...form, certification: e.target.value })} />
+            <span>Operational Certification</span>
+            <select
+              style={styles.select}
+              value={form.certification}
+              onChange={(e) => setForm({ ...form, certification: e.target.value })}
+            >
+              {CERTIFICATION_OPTIONS.map((cert) => (
+                <option key={cert} value={cert}>
+                  {cert}
+                </option>
+              ))}
+            </select>
           </label>
 
           <div style={{ gridColumn: '1 / -1', marginTop: '6px' }}>
             {error && <p style={styles.error}>{error}</p>}
             {created && (
               <p style={styles.success}>
-                Registered employee {created.employee.user.name} ({created.employee.user.email}).{' '}
-                {created.emailSent
-                  ? 'Credentials dispatched via email.'
-                  : 'Generated temporary access key:'}{' '}
-                {!created.emailSent && <code style={{ background: '#fff', padding: '2px 8px', borderRadius: '4px' }}>{created.tempPassword}</code>}
+                Staff member registered; credentials have been emailed to {created.employee?.user?.email || created.employee?.user?.name || 'the employee'}.
               </p>
+            )}
+            {/* TEMPORARY DEV AID: delete this block and devPassword.js before deployment */}
+            {created?.devTempPassword && (
+              <div
+                style={{
+                  backgroundColor: '#fef3c7',
+                  border: '1px solid #f59e0b',
+                  borderRadius: '8px',
+                  padding: '12px 16px',
+                  margin: '12px 0',
+                  color: '#92400e',
+                  fontSize: '13px',
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#b45309' }}>warning</span>
+                  DEV ONLY: temporary password (email not sent)
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                  <div>
+                    <span>Email: <strong>{created.employee?.user?.email || 'N/A'}</strong></span>
+                    <span style={{ margin: '0 8px' }}>•</span>
+                    <span>Password: <code style={{ backgroundColor: '#fde68a', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, fontFamily: 'monospace' }}>{created.devTempPassword}</code></span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(created.devTempPassword);
+                      setCopiedDevPass('created');
+                      setTimeout(() => setCopiedDevPass(null), 2000);
+                    }}
+                    className="btn-glass"
+                    style={{ padding: '4px 10px', fontSize: '12px', borderColor: '#f59e0b', color: '#92400e', fontWeight: 600 }}
+                  >
+                    {copiedDevPass === 'created' ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
             )}
             <button className="btn-primary-aero" type="submit" disabled={submitting}>
               <span className="material-symbols-outlined">how_to_reg</span>
@@ -917,6 +1089,7 @@ export function StaffManagement({ token }) {
                 <th>Department</th>
                 <th>Role Title</th>
                 <th>Duty Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -936,11 +1109,76 @@ export function StaffManagement({ token }) {
                       {e.status || 'Active'}
                     </span>
                   </td>
+                  <td>
+                    <button
+                      type="button"
+                      onClick={() => handleResendCredentials(e.id)}
+                      disabled={resendingId === e.id || cooldowns[e.id] > 0}
+                      className="btn-glass"
+                      style={{ padding: '6px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                    >
+                      {resendingId === e.id
+                        ? 'Resending…'
+                        : cooldowns[e.id] > 0
+                        ? `Wait ${cooldowns[e.id]}s`
+                        : 'Resend credentials'}
+                    </button>
+                    {resendStatus[e.id] && (
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          marginTop: '4px',
+                          color: resendStatus[e.id].error ? 'var(--color-critical)' : '#059669',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {resendStatus[e.id].message}
+                      </div>
+                    )}
+                    {/* TEMPORARY DEV AID: delete this block and devPassword.js before deployment */}
+                    {resendStatus[e.id]?.devTempPassword && (
+                      <div
+                        style={{
+                          backgroundColor: '#fef3c7',
+                          border: '1px solid #f59e0b',
+                          borderRadius: '6px',
+                          padding: '8px 10px',
+                          marginTop: '6px',
+                          color: '#92400e',
+                          fontSize: '11px',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: '14px', color: '#b45309' }}>warning</span>
+                          DEV ONLY: temporary password (email not sent)
+                        </div>
+                        <div style={{ marginBottom: '6px' }}>
+                          <div>Email: <strong>{resendStatus[e.id].email || e.email}</strong></div>
+                          <div style={{ marginTop: '2px' }}>
+                            Password: <code style={{ backgroundColor: '#fde68a', padding: '1px 4px', borderRadius: '3px', fontWeight: 700, fontFamily: 'monospace' }}>{resendStatus[e.id].devTempPassword}</code>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(resendStatus[e.id].devTempPassword);
+                            setCopiedDevPass(e.id);
+                            setTimeout(() => setCopiedDevPass(null), 2000);
+                          }}
+                          className="btn-glass"
+                          style={{ padding: '2px 8px', fontSize: '11px', borderColor: '#f59e0b', color: '#92400e', fontWeight: 600 }}
+                        >
+                          {copiedDevPass === e.id ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-outline)' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-outline)' }}>
                     No staff members registered.
                   </td>
                 </tr>

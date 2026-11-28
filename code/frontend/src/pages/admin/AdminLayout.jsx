@@ -3,6 +3,7 @@ import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { LiveStatusPill } from '../../context/SocketContext.jsx';
 import { apiFetch } from '../../api/client.js';
+import EmergencyBanner from '../../components/EmergencyBanner.jsx';
 
 export default function AdminLayout() {
   const { user, token, logout } = useAuth();
@@ -57,6 +58,10 @@ export default function AdminLayout() {
   const path = location.pathname;
   let pageTitle = 'Dashboard';
   if (path.includes('connections')) pageTitle = 'Connections at Risk';
+  else if (path === '/admin/gate') pageTitle = 'Gate Boarding';
+  else if (path === '/admin/baggage' || path.includes('baggage')) pageTitle = 'Baggage';
+  else if (path === '/admin/security' || path.includes('security')) pageTitle = 'Security & Checkpoints';
+  else if (path === '/admin/parking' || path.includes('parking')) pageTitle = 'Parking Operations';
   else if (path.includes('flights')) pageTitle = 'Flights Operations';
   else if (path.includes('gates')) pageTitle = 'Gates & Terminals';
   else if (path.includes('resources')) pageTitle = 'Resources Registry';
@@ -66,6 +71,8 @@ export default function AdminLayout() {
   else if (path.includes('passengers')) pageTitle = 'Passengers Registry';
   else if (path.includes('assistance')) pageTitle = 'Assistance Queue';
   else if (path.includes('bookings')) pageTitle = 'Bookings Registry';
+  else if (path.includes('facilities')) pageTitle = 'Facilities Directory';
+  else if (path.includes('support')) pageTitle = 'Support Chat & Escalations';
 
   return (
     <div className="admin-shell">
@@ -153,6 +160,22 @@ export default function AdminLayout() {
               <span className="material-symbols-outlined">warning</span>
               <span>Emergencies</span>
             </NavLink>
+            <NavLink to="/admin/gate" className={navClass}>
+              <span className="material-symbols-outlined">qr_code_scanner</span>
+              <span>Gate Boarding</span>
+            </NavLink>
+            <NavLink to="/admin/baggage" className={navClass}>
+              <span className="material-symbols-outlined">luggage</span>
+              <span>Baggage</span>
+            </NavLink>
+            <NavLink to="/admin/parking" className={navClass}>
+              <span className="material-symbols-outlined">local_parking</span>
+              <span>Parking</span>
+            </NavLink>
+            <NavLink to="/admin/security" className={navClass}>
+              <span className="material-symbols-outlined">shield</span>
+              <span>Security</span>
+            </NavLink>
 
             <div className="admin-nav-category">People</div>
             {isAdmin && (
@@ -183,6 +206,14 @@ export default function AdminLayout() {
             <NavLink to="/admin/bookings" className={navClass}>
               <span className="material-symbols-outlined">confirmation_number</span>
               <span>Bookings</span>
+            </NavLink>
+            <NavLink to="/admin/facilities" className={navClass}>
+              <span className="material-symbols-outlined">storefront</span>
+              <span>Facilities</span>
+            </NavLink>
+            <NavLink to="/admin/support" className={navClass}>
+              <span className="material-symbols-outlined">support_agent</span>
+              <span>Support Chat</span>
             </NavLink>
           </nav>
         </div>
@@ -263,6 +294,7 @@ export default function AdminLayout() {
 
         {/* Content Outlet */}
         <main className="admin-main-viewport">
+          <EmergencyBanner />
           <Outlet />
         </main>
       </div>

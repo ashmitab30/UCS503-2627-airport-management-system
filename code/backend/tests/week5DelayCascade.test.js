@@ -124,8 +124,8 @@ describe('Week 5: IATA Delays, Cascade Forward & Turnaround Timestamps Tests', (
     const inRes = await pool.query(
       `INSERT INTO flight (flight_number, aircraft_type_id, origin_id, dest_id,
                            scheduled_departure, scheduled_arrival,
-                           estimated_departure, estimated_arrival, status)
-       VALUES ('W5-IN', $1, $2, $3, $4, $5, $4, $5, 'scheduled')
+                           estimated_departure, estimated_arrival, status, tail_number)
+       VALUES ('W5-IN', $1, $2, $3, $4, $5, $4, $5, 'scheduled', 'VT-W501')
        RETURNING id`,
       [aircraftType, airportA, airportB, inDep, inArr]
     );
@@ -138,8 +138,8 @@ describe('Week 5: IATA Delays, Cascade Forward & Turnaround Timestamps Tests', (
     const outRes = await pool.query(
       `INSERT INTO flight (flight_number, aircraft_type_id, origin_id, dest_id,
                            scheduled_departure, scheduled_arrival,
-                           estimated_departure, estimated_arrival, status)
-       VALUES ('W5-OUT', $1, $3, $2, $4, $5, $4, $5, 'scheduled')
+                           estimated_departure, estimated_arrival, status, tail_number)
+       VALUES ('W5-OUT', $1, $3, $2, $4, $5, $4, $5, 'scheduled', 'VT-W501')
        RETURNING id`,
       [aircraftType, airportA, airportB, outDep, outArr]
     );

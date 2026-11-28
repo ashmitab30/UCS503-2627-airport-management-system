@@ -18,6 +18,7 @@ import FlightSearchResults from '../components/booking/FlightSearchResults.jsx';
 import SeatDeckMap from '../components/booking/SeatDeckMap.jsx';
 import BookingHoldModal from '../components/booking/BookingHoldModal.jsx';
 import BookingConfirmation from '../components/booking/BookingConfirmation.jsx';
+import { formatINR, formatDate, formatTime, dayOffsetLabel } from '../utils/format.js';
 
 export default function BookFlight() {
   const { token } = useAuth();
@@ -74,7 +75,13 @@ export default function BookFlight() {
       if (dt) params.set('date', dt);
       if (cls) params.set('class', cls);
       const data = await apiFetch(`/bookings/search-flights?${params.toString()}`, { token });
-      setFlights(data.flights);
+      const nowMs = Date.now();
+      const activeFlights = (data.flights || []).filter((f) => {
+        if (f.has_departed) return false;
+        if (['cancelled', 'departed', 'landed'].includes(f.status)) return false;
+        return new Date(f.scheduled_departure).getTime() > nowMs;
+      });
+      setFlights(activeFlights);
       setStep('results');
     } catch (err) {
       setError(err.message);
@@ -95,6 +102,11 @@ export default function BookFlight() {
 
   async function handleSelectFlight(flight, cls) {
     setError(null);
+    const nowMs = Date.now();
+    if (flight.has_departed || new Date(flight.scheduled_departure).getTime() <= nowMs || ['cancelled', 'departed', 'landed'].includes(flight.status)) {
+      setError('This flight has already departed and is no longer available for booking. Please select an upcoming flight.');
+      return;
+    }
     setSelectedFlight(flight);
     setSelectedSeat(null);
     setLoading(true);
@@ -107,7 +119,11 @@ export default function BookFlight() {
       if (firstAvail) setSelectedSeat(firstAvail);
       setStep('seat');
     } catch (err) {
-      setError(err.message);
+      if (err.detail?.code === 'FLIGHT_DEPARTED' || err.message?.includes('departed')) {
+        setError('This flight has already departed and is no longer available for booking. Please choose another flight.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -134,7 +150,13 @@ export default function BookFlight() {
       setHeldBooking(data.booking);
       setStep('hold');
     } catch (err) {
-      setError(err.message);
+      if (err.detail?.code === 'FLIGHT_DEPARTED' || err.message?.includes('departed')) {
+        setError('This flight has already departed and is no longer available for booking. Please select an upcoming flight.');
+      } else if (err.detail?.code === 'FLIGHT_CANCELLED' || err.message?.includes('cancelled')) {
+        setError('This flight is cancelled and cannot be booked. Please select an upcoming flight.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -153,7 +175,11 @@ export default function BookFlight() {
       setConfirmedBooking({ ...data.booking, payment: data.payment });
       setStep('confirmed');
     } catch (err) {
-      setError(err.message);
+      if (err.detail?.code === 'FLIGHT_DEPARTED' || err.message?.includes('departed')) {
+        setError('This flight departed while your seat was held and can no longer be confirmed. Please select an upcoming flight.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -205,7 +231,28 @@ export default function BookFlight() {
           onSubmit={handleSearch}
         />
 
-        {error && <p style={{ ...styles.error, marginBottom: '20px' }}>{error}</p>}
+        {error && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '14px 20px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid #ef4444',
+              borderRadius: '12px',
+              color: '#b91c1c',
+              fontSize: '13.5px',
+              fontWeight: 600,
+              marginBottom: '20px',
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '20px', color: '#ef4444' }}>
+              error
+            </span>
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Step 2 — results */}
         {step === 'results' && (
@@ -226,7 +273,12 @@ export default function BookFlight() {
               <div className="ticket-notch-card">
                 <div style={{ padding: '20px 24px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span className="status-pill status-pill-blue">Flight {selectedFlight.flight_number}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="status-pill status-pill-blue">Flight {selectedFlight.flight_number}</span>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-primary)' }}>
+                        {formatDate(selectedFlight.scheduled_departure)}
+                      </span>
+                    </div>
                     <button type="button" onClick={() => setStep('results')} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
                       ← Change Flight
                     </button>
@@ -234,12 +286,14 @@ export default function BookFlight() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <div>
                       <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--color-primary)', fontFamily: 'var(--font-display)', lineHeight: 1 }}>{selectedFlight.origin_code}</div>
-                      <span style={{ fontSize: '12px', color: 'var(--color-slate)' }}>{new Date(selectedFlight.scheduled_departure).toLocaleString()}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--color-slate)' }}>{formatTime(selectedFlight.scheduled_departure)}</span>
                     </div>
                     <span className="material-symbols-outlined" style={{ fontSize: '28px', color: 'var(--color-outline)' }}>flight_takeoff</span>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--color-secondary)', fontFamily: 'var(--font-display)', lineHeight: 1 }}>{selectedFlight.dest_code}</div>
-                      <span style={{ fontSize: '12px', color: 'var(--color-slate)' }}>{new Date(selectedFlight.scheduled_arrival).toLocaleString()}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--color-slate)' }}>
+                        {formatTime(selectedFlight.scheduled_arrival)}{dayOffsetLabel(selectedFlight.scheduled_departure, selectedFlight.scheduled_arrival) ? ` (${dayOffsetLabel(selectedFlight.scheduled_departure, selectedFlight.scheduled_arrival)})` : ''}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -252,7 +306,7 @@ export default function BookFlight() {
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-outline)', display: 'block' }}>Total Fare</span>
                     <span style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>
-                      {selectedSeat ? `₹${(selectedSeat.price_cents / 100).toFixed(0)}` : '—'}
+                      {selectedSeat ? formatINR(selectedSeat.price_cents) : '—'}
                     </span>
                   </div>
                 </div>

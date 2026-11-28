@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { styles } from '../styles.js';
+import { getRoleDashboardPath } from '../utils/navigation.js';
 
 export default function Login() {
   const { login } = useAuth();
@@ -17,8 +18,8 @@ export default function Login() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
-      navigate('/dashboard');
+      const user = await login(email, password);
+      navigate(getRoleDashboardPath(user));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -65,7 +66,7 @@ export default function Login() {
               <span className="pulse-radar-dot" />
               <span>Avionics Live Sync</span>
             </div>
-            <h1 style={styles.authHeadline}>
+            <h1 style={{ ...styles.authHeadline, color: '#ffffff' }}>
               High-altitude clarity and precision airport operations.
             </h1>
             <p style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '1rem', marginTop: '1.2rem', maxWidth: 440, lineHeight: 1.6 }}>

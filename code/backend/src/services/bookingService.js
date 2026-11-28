@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { pool } from '../db/pool.js';
-import { SEAT_CLASS_MULTIPLIERS, ASSISTANCE_TYPES } from '../constants/index.js';
+import { SEAT_CLASS_MULTIPLIERS, ASSISTANCE_TYPES, ADMIN_OPS_ROLES, BOARDING_GROUPS } from '../constants/index.js';
+import { hasDeparted } from './flightTime.js';
 
 export const HOLD_EXPIRY_MINUTES = 10;
 
@@ -24,6 +25,82 @@ export function generateBookingRef() {
 export function calculateSeatPriceCents(basePriceCents, seatClass) {
   const multiplier = SEAT_CLASS_MULTIPLIERS[seatClass] ?? 1.0;
   return Math.round(basePriceCents * multiplier);
+}
+
+/**
+ * Searches flights with origin/destination/date/class filters,
+ * automatically excluding past, cancelled, departed, and landed flights
+ * unless includePast=true is requested by an admin/ops_manager role.
+ */
+export async function searchFlights(
+  { origin, destination, date, class: seatClass, limit = 50, offset = 0, includePast = false, userRole = 'passenger' } = {},
+  dbClient = pool
+) {
+  const conditions = [];
+  const params = [];
+
+  if (origin) {
+    params.push(origin.toUpperCase());
+    conditions.push(`o.code = $${params.length}`);
+  }
+  if (destination) {
+    params.push(destination.toUpperCase());
+    conditions.push(`d.code = $${params.length}`);
+  }
+  if (date) {
+    params.push(date);
+    conditions.push(`f.scheduled_departure::date = $${params.length}`);
+  }
+
+  const canIncludePast = includePast === true && ADMIN_OPS_ROLES.includes(userRole);
+  if (canIncludePast) {
+    conditions.push(`f.status <> 'cancelled'`);
+  } else {
+    conditions.push(`f.scheduled_departure > now()`);
+    conditions.push(`f.status NOT IN ('cancelled', 'departed', 'landed')`);
+  }
+
+  const where = `WHERE ${conditions.join(' AND ')}`;
+
+  params.push(limit);
+  const limitParam = `$${params.length}`;
+  params.push(offset);
+  const offsetParam = `$${params.length}`;
+
+  const { rows } = await dbClient.query(
+    `SELECT f.id, f.flight_number, f.scheduled_departure, f.scheduled_arrival, f.actual_departure, f.status,
+            f.base_price_cents,
+            o.code AS origin_code, o.name AS origin_name,
+            d.code AS dest_code, d.name AS dest_name,
+            at.model AS aircraft_model, at.size_class,
+            f.base_price_cents AS mock_price_cents,
+            ROUND(f.base_price_cents * 1.0) AS economy_price_cents,
+            ROUND(f.base_price_cents * 1.4) AS premium_economy_price_cents,
+            ROUND(f.base_price_cents * 2.2) AS business_price_cents,
+            ROUND(f.base_price_cents * 3.5) AS first_price_cents
+     FROM flight f
+     JOIN airport o ON o.id = f.origin_id
+     JOIN airport d ON d.id = f.dest_id
+     JOIN aircraft_type at ON at.id = f.aircraft_type_id
+     ${where}
+     ORDER BY f.scheduled_departure
+     LIMIT ${limitParam} OFFSET ${offsetParam}`,
+    params
+  );
+
+  const formatted = rows.map((flight) => {
+    const targetClass = seatClass || 'economy';
+    const priceCents = calculateSeatPriceCents(flight.base_price_cents, targetClass);
+    return {
+      ...flight,
+      has_departed: hasDeparted(flight),
+      selected_class: targetClass,
+      fare_cents: priceCents,
+      fare_formatted: (priceCents / 100).toFixed(2),
+    };
+  });
+
+  return { flights: formatted, limit, offset };
 }
 
 /**
@@ -108,7 +185,8 @@ export async function holdSeat(
     // Lock seat row FOR UPDATE
     const seatResult = await client.query(
       `SELECT s.id, s.seat_number, s.class, s.is_booked,
-              f.id AS flight_id, f.base_price_cents, f.status AS flight_status
+              f.id AS flight_id, f.base_price_cents, f.status AS flight_status,
+              f.scheduled_departure, f.actual_departure
        FROM seat s
        JOIN flight f ON f.id = s.flight_id
        WHERE s.id = $1 AND s.flight_id = $2
@@ -125,7 +203,22 @@ export async function holdSeat(
 
     if (seat.flight_status === 'cancelled') {
       if (ownsClient) await client.query('ROLLBACK');
-      return { ok: false, status: 409, error: 'This flight is cancelled and cannot be booked' };
+      return {
+        ok: false,
+        status: 409,
+        error: 'This flight is cancelled and cannot be booked',
+        code: 'FLIGHT_CANCELLED',
+      };
+    }
+
+    if (hasDeparted(seat)) {
+      if (ownsClient) await client.query('ROLLBACK');
+      return {
+        ok: false,
+        status: 409,
+        error: 'Flight has already departed and cannot be booked',
+        code: 'FLIGHT_DEPARTED',
+      };
     }
 
     if (seat.is_booked) {
@@ -206,7 +299,7 @@ export async function confirmHeldBooking({ bookingId, userId, paymentMethod = 'm
 
     const bRes = await client.query(
       `SELECT b.id, b.user_id, b.flight_id, b.seat_id, b.status, b.held_until, b.price_cents, b.booking_ref,
-              f.scheduled_departure, f.status AS flight_status
+              f.scheduled_departure, f.actual_departure, f.status AS flight_status
        FROM booking b
        JOIN flight f ON f.id = b.flight_id
        WHERE b.id = $1
@@ -233,6 +326,26 @@ export async function confirmHeldBooking({ bookingId, userId, paymentMethod = 'm
     if (booking.status !== 'held') {
       if (ownsClient) await client.query('ROLLBACK');
       return { ok: false, status: 400, error: `Cannot confirm booking in '${booking.status}' status` };
+    }
+
+    if (booking.flight_status === 'cancelled') {
+      if (ownsClient) await client.query('ROLLBACK');
+      return {
+        ok: false,
+        status: 409,
+        error: 'This flight was cancelled and cannot be confirmed',
+        code: 'FLIGHT_CANCELLED',
+      };
+    }
+
+    if (hasDeparted(booking)) {
+      if (ownsClient) await client.query('ROLLBACK');
+      return {
+        ok: false,
+        status: 409,
+        error: 'Flight has already departed',
+        code: 'FLIGHT_DEPARTED',
+      };
     }
 
     // Check expiration
@@ -321,7 +434,7 @@ export async function checkInBooking({ bookingId, userId, seatId = null }, dbCli
 
     const bRes = await client.query(
       `SELECT b.id, b.user_id, b.flight_id, b.seat_id, b.status, b.booking_ref,
-              f.scheduled_departure, f.status AS flight_status
+              f.scheduled_departure, f.actual_departure, f.status AS flight_status
        FROM booking b
        JOIN flight f ON f.id = b.flight_id
        WHERE b.id = $1
@@ -352,13 +465,18 @@ export async function checkInBooking({ bookingId, userId, seatId = null }, dbCli
 
     if (b.flight_status === 'cancelled') {
       if (ownsClient) await client.query('ROLLBACK');
-      return { ok: false, status: 400, error: 'Flight is cancelled' };
+      return { ok: false, status: 400, error: 'Flight is cancelled', code: 'FLIGHT_CANCELLED' };
     }
 
-    // Window check: within 24 hours of scheduled departure and before departure
-    const now = Date.now();
+    // Departure and window check
+    const now = new Date();
+    if (hasDeparted(b, now)) {
+      if (ownsClient) await client.query('ROLLBACK');
+      return { ok: false, status: 400, error: 'Flight has already departed', code: 'FLIGHT_DEPARTED' };
+    }
+
     const depTime = new Date(b.scheduled_departure).getTime();
-    const diffHours = (depTime - now) / (1000 * 3600);
+    const diffHours = (depTime - now.getTime()) / (1000 * 3600);
 
     if (diffHours > 24) {
       if (ownsClient) await client.query('ROLLBACK');
@@ -366,12 +484,8 @@ export async function checkInBooking({ bookingId, userId, seatId = null }, dbCli
         ok: false,
         status: 400,
         error: 'Web check-in opens 24 hours before scheduled departure',
+        code: 'CHECK_IN_NOT_OPEN',
       };
-    }
-
-    if (diffHours < -1) {
-      if (ownsClient) await client.query('ROLLBACK');
-      return { ok: false, status: 400, error: 'Flight has already departed' };
     }
 
     let finalSeatId = b.seat_id;
@@ -393,12 +507,32 @@ export async function checkInBooking({ bookingId, userId, seatId = null }, dbCli
       finalSeatId = seatId;
     }
 
+    // Boarding group assignment inside the existing check-in transaction:
+    // Group 1 = priority boarding for passengers who have ANY assistance request that is not cancelled
+    //           (requested, assigned, in_progress, completed) or who flew in business or first class;
+    // Group 2 = everyone else.
+    const seatClassRes = await client.query('SELECT class FROM seat WHERE id = $1', [finalSeatId]);
+    const seatClass = seatClassRes.rows[0]?.class || 'economy';
+    const isPremium = ['business', 'first'].includes(seatClass);
+
+    const aRes = await client.query(
+      `SELECT 1 FROM assistance_request
+       WHERE booking_id = $1 AND status != 'cancelled'
+       LIMIT 1`,
+      [bookingId]
+    );
+    const hasQualifyingAssistance = aRes.rows.length > 0;
+
+    const boardingGroup = (isPremium || hasQualifyingAssistance)
+      ? BOARDING_GROUPS.PRIORITY
+      : BOARDING_GROUPS.GENERAL;
+
     const updateRes = await client.query(
       `UPDATE booking
-       SET status = 'checked_in', seat_id = $1
-       WHERE id = $2
-       RETURNING id, booking_ref, status, seat_id`,
-      [finalSeatId, bookingId]
+       SET status = 'checked_in', seat_id = $1, boarding_group = $2
+       WHERE id = $3
+       RETURNING id, booking_ref, status, seat_id, boarding_group`,
+      [finalSeatId, boardingGroup, bookingId]
     );
 
     if (ownsClient) await client.query('COMMIT');
@@ -407,6 +541,59 @@ export async function checkInBooking({ bookingId, userId, seatId = null }, dbCli
   } catch (err) {
     if (ownsClient) await client.query('ROLLBACK');
     throw err;
+  } finally {
+    if (ownsClient) client.release();
+  }
+}
+
+/**
+ * Recomputes the boarding group for a checked-in booking when an assistance request
+ * is created, updated, or cancelled.
+ * Group 1: Priority boarding (assistance request or business/first class)
+ * Group 2: General boarding (all other passengers)
+ */
+export async function recomputeBoardingGroup(bookingId, dbClient = null) {
+  const client = dbClient || (await pool.connect());
+  const ownsClient = !dbClient;
+  try {
+    const bRes = await client.query(
+      `SELECT b.id, b.status, s.class AS seat_class
+       FROM booking b
+       LEFT JOIN seat s ON s.id = b.seat_id
+       WHERE b.id = $1`,
+      [bookingId]
+    );
+    if (bRes.rows.length === 0) return null;
+    const b = bRes.rows[0];
+
+    // Only checked_in bookings have their boarding group recomputed.
+    // A booking that is already boarded keeps its group; never recompute it.
+    if (b.status !== 'checked_in') {
+      return null;
+    }
+
+    const isPremium = ['business', 'first'].includes(b.seat_class);
+
+    // Group 1 if business/first OR ANY assistance request that is not cancelled
+    // (requested, assigned, in_progress, completed).
+    const aRes = await client.query(
+      `SELECT 1 FROM assistance_request
+       WHERE booking_id = $1 AND status != 'cancelled'
+       LIMIT 1`,
+      [bookingId]
+    );
+    const hasQualifyingAssistance = aRes.rows.length > 0;
+
+    const newGroup = (isPremium || hasQualifyingAssistance)
+      ? BOARDING_GROUPS.PRIORITY
+      : BOARDING_GROUPS.GENERAL;
+
+    await client.query(
+      `UPDATE booking SET boarding_group = $1 WHERE id = $2`,
+      [newGroup, bookingId]
+    );
+
+    return newGroup;
   } finally {
     if (ownsClient) client.release();
   }

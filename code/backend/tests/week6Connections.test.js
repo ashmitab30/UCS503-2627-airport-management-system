@@ -11,6 +11,7 @@ describe('Week 6: Connecting Flights & Rebooking Tests', () => {
   let airportA, airportB, airportC; // A -> B (hub) -> C
   let aircraftType;
   let testUser;
+  let testPassenger;
 
   beforeAll(async () => {
     // Cleanup any lingering test data
@@ -33,13 +34,20 @@ describe('Week 6: Connecting Flights & Rebooking Tests', () => {
     const actRes = await pool.query('SELECT id FROM aircraft_type LIMIT 1');
     aircraftType = actRes.rows[0].id;
 
-    // Create passenger user
+    // Create passenger user and passenger record
     const uRes = await pool.query(
       `INSERT INTO "user" (name, email, password_hash, role)
        VALUES ('Conn Passenger', 'w6_p_' || gen_random_uuid() || '@example.com', 'dummy_hash', 'passenger')
        RETURNING id`
     );
     testUser = uRes.rows[0];
+
+    const pRes = await pool.query(
+      `INSERT INTO passenger (name, email)
+       VALUES ('Conn Passenger', 'w6_p_' || gen_random_uuid() || '@example.com')
+       RETURNING id`
+    );
+    testPassenger = pRes.rows[0];
   });
 
   afterAll(async () => {
@@ -49,9 +57,15 @@ describe('Week 6: Connecting Flights & Rebooking Tests', () => {
     if (testUser) {
       await pool.query('DELETE FROM connection WHERE passenger_id = $1', [testUser.id]);
       await pool.query('DELETE FROM booking WHERE passenger_id = $1 OR user_id = $1', [testUser.id]);
+      if (testPassenger) {
+        await pool.query('DELETE FROM booking WHERE passenger_id = $1', [testPassenger.id]);
+      }
       await pool.query('DELETE FROM delay_log WHERE logged_by = $1', [testUser.id]);
       await pool.query("DELETE FROM flight WHERE flight_number LIKE 'W6-%'");
       await pool.query('DELETE FROM "user" WHERE id = $1', [testUser.id]);
+    }
+    if (testPassenger) {
+      await pool.query('DELETE FROM passenger WHERE id = $1', [testPassenger.id]);
     }
   });
 
@@ -261,9 +275,9 @@ describe('Week 6: Connecting Flights & Rebooking Tests', () => {
 
     const oldBooking = await pool.query(
       `INSERT INTO booking (booking_ref, user_id, passenger_id, flight_id, seat_id, status, price_cents)
-       VALUES ('BKOLD1', $1, $1, $2, $3, 'confirmed', 5000)
+       VALUES ('BKOLD1', $1, $2, $3, $4, 'confirmed', 5000)
        RETURNING id`,
-      [testUser.id, oldOutF.rows[0].id, oldSeat.rows[0].id]
+      [testUser.id, testPassenger.id, oldOutF.rows[0].id, oldSeat.rows[0].id]
     );
 
     const conn = await validateAndCreateConnection({
@@ -320,6 +334,15 @@ describe('Week 6: Connecting Flights & Rebooking Tests', () => {
     // New seat must be booked
     const { rows: newSeatCheck } = await pool.query('SELECT is_booked FROM seat WHERE id = $1', [newSeat.rows[0].id]);
     expect(newSeatCheck[0].is_booked).toBe(true);
+
+    // Newly created booking from rebooking must keep the same passenger_id as original booking
+    const { rows: rebookedBookingCheck } = await pool.query(
+      'SELECT id, passenger_id, user_id, status FROM booking WHERE id = $1',
+      [rebookResult.connection.outbound_booking_id]
+    );
+    expect(rebookedBookingCheck.length).toBe(1);
+    expect(rebookedBookingCheck[0].passenger_id).toBe(testPassenger.id);
+    expect(rebookedBookingCheck[0].status).toBe('confirmed');
 
     // Double rebooking prevention
     await expect(

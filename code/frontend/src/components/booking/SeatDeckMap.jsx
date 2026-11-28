@@ -1,3 +1,5 @@
+import { formatINR } from '../../utils/format.js';
+
 /**
  * SeatDeckMap — interactive aircraft cabin seat picker.
  * Derives rows and columns from the actual seat data returned by the API.
@@ -208,7 +210,7 @@ function SeatButton({ seatObj, selectedSeat, onSelectSeat }) {
       disabled={!isAvail}
       onClick={() => isAvail && onSelectSeat(seatObj)}
       className={`seat-btn${isSelected ? ' active-seat' : ''}${!isAvail ? ' occupied-seat' : ''}`}
-      title={`${seatObj.seat_number} ${isAvail ? `Available — ₹${(seatObj.price_cents / 100).toFixed(0)}` : '(Occupied)'}`}
+      title={`${seatObj.seat_number} ${isAvail ? `Available — ${formatINR(seatObj.price_cents)}` : '(Occupied)'}`}
       aria-label={`Seat ${seatObj.seat_number} ${isAvail ? 'available' : 'occupied'}`}
       aria-pressed={isSelected}
     >

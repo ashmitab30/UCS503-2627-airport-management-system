@@ -1,6 +1,17 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../api/client.js';
 import { styles } from '../styles.js';
+import { formatINR, formatDate, formatTime, formatDateTime } from '../utils/format.js';
+import AirportSelect from '../components/common/AirportSelect.jsx';
+import DateTimePicker from '../components/common/DateTimePicker.jsx';
+import {
+  validateResourceAssignmentForm,
+  validateAddResourceForm,
+  ALLOWED_RESOURCE_TYPES,
+  formatResourceOption,
+  isFlightAssignable,
+  formatFlightOption,
+} from '../utils/resourceValidation.js';
 
 const SIZE_CLASSES = ['small', 'medium', 'large', 'jumbo'];
 
@@ -16,12 +27,12 @@ export default function OpsCore({ token, isAdmin }) {
   const bump = () => setRefreshKey((k) => k + 1);
 
   useEffect(() => {
-    apiFetch('/airports').then((d) => setAirports(d.airports)).catch(() => {});
-    apiFetch('/aircraft-types').then((d) => setAircraftTypes(d.aircraft_types)).catch(() => {});
+    apiFetch('/airports').then((d) => setAirports(d.airports)).catch(() => { });
+    apiFetch('/aircraft-types').then((d) => setAircraftTypes(d.aircraft_types)).catch(() => { });
   }, [refreshKey]);
 
   useEffect(() => {
-    apiFetch('/gates').then((d) => setGates(d.gates)).catch(() => {});
+    apiFetch('/gates').then((d) => setGates(d.gates)).catch(() => { });
   }, [refreshKey]);
 
   return (
@@ -197,6 +208,7 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
   const [form, setForm] = useState({
     flight_number: '', aircraft_type_id: '', origin_id: '', dest_id: '',
     scheduled_departure: '', scheduled_arrival: '', gate_id: '',
+    base_fare_rupees: '5000', tail_number: '',
   });
   const [autoAssign, setAutoAssign] = useState(true);
   const [error, setError] = useState(null);
@@ -204,6 +216,7 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
   const [success, setSuccess] = useState(null);
   const [selectedFlightId, setSelectedFlightId] = useState(null);
   const [selectedDetail, setSelectedDetail] = useState(null);
+  const [editingTailNumber, setEditingTailNumber] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   const loadFlights = useCallback(() => {
@@ -219,6 +232,13 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
     setError(null);
     setSuccess(null);
     setConflicts([]);
+
+    const rupees = Number(form.base_fare_rupees);
+    if (!Number.isInteger(rupees) || rupees <= 0 || rupees > 500000) {
+      setError('Base fare must be a positive integer in rupees (max ₹500,000)');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const body = {
@@ -228,15 +248,17 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
         dest_id: Number(form.dest_id),
         scheduled_departure: form.scheduled_departure,
         scheduled_arrival: form.scheduled_arrival,
+        base_price_cents: rupees * 100,
       };
+      if (form.tail_number?.trim()) body.tail_number = form.tail_number.trim();
       if (!autoAssign && form.gate_id) body.gate_id = Number(form.gate_id);
 
       const result = await apiFetch('/flights', { method: 'POST', token, body });
       setSuccess(
         `Flight ${result.flight.flight_number} created — gate ${result.flight.gate_id} ` +
-        `(${result.gate_auto_assigned ? 'auto-assigned' : 'manually assigned'}).`
+        `(${result.gate_auto_assigned ? 'auto-assigned' : 'manually assigned'}) at ${formatINR(result.flight.base_price_cents)} base fare.`
       );
-      setForm({ ...form, flight_number: '', scheduled_departure: '', scheduled_arrival: '', gate_id: '' });
+      setForm({ ...form, flight_number: '', scheduled_departure: '', scheduled_arrival: '', gate_id: '', base_fare_rupees: '5000', tail_number: '' });
       loadFlights();
     } catch (err) {
       setError(err.message);
@@ -248,9 +270,30 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
 
   async function viewFlight(id) {
     setSelectedFlightId(id);
+    setEditingTailNumber(null);
     try {
       const detail = await apiFetch(`/flights/${id}`);
       setSelectedDetail(detail);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function saveTailNumber(flightId) {
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await apiFetch(`/flights/${flightId}`, {
+        method: 'PATCH',
+        token,
+        body: { tail_number: editingTailNumber.trim() || null },
+      });
+      setEditingTailNumber(null);
+      setSuccess(`Updated tail number for ${res.flight.flight_number}.`);
+      loadFlights();
+      if (selectedFlightId === flightId) {
+        viewFlight(flightId);
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -275,31 +318,57 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
             ))}
           </select>
         </label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={styles.label}>Origin</label>
+          <div style={{ ...styles.input, padding: '4px 8px' }}>
+            <AirportSelect
+              value={form.origin_id}
+              valueKey="id"
+              airports={airports}
+              onChange={(id) => setForm({ ...form, origin_id: id, gate_id: '' })}
+              placeholder="Select origin airport"
+              required
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={styles.label}>Destination</label>
+          <div style={{ ...styles.input, padding: '4px 8px' }}>
+            <AirportSelect
+              value={form.dest_id}
+              valueKey="id"
+              airports={airports}
+              onChange={(id) => setForm({ ...form, dest_id: id })}
+              placeholder="Select destination airport"
+              required
+            />
+          </div>
+        </div>
+        <DateTimePicker
+          label="Scheduled departure"
+          value={form.scheduled_departure}
+          onChange={(val) => setForm({ ...form, scheduled_departure: val })}
+          required
+        />
+        <DateTimePicker
+          label="Scheduled arrival"
+          value={form.scheduled_arrival}
+          onChange={(val) => setForm({ ...form, scheduled_arrival: val })}
+          required
+        />
         <label style={styles.label}>
-          Origin
-          <select style={styles.select} value={form.origin_id}
-            onChange={(e) => setForm({ ...form, origin_id: e.target.value, gate_id: '' })} required>
-            <option value="" disabled>Select</option>
-            {airports.map((a) => <option key={a.id} value={a.id}>{a.code}</option>)}
-          </select>
-        </label>
-        <label style={styles.label}>
-          Destination
-          <select style={styles.select} value={form.dest_id}
-            onChange={(e) => setForm({ ...form, dest_id: e.target.value })} required>
-            <option value="" disabled>Select</option>
-            {airports.map((a) => <option key={a.id} value={a.id}>{a.code}</option>)}
-          </select>
-        </label>
-        <label style={styles.label}>
-          Scheduled departure
-          <input style={styles.input} type="datetime-local" value={form.scheduled_departure}
-            onChange={(e) => setForm({ ...form, scheduled_departure: e.target.value })} required />
-        </label>
-        <label style={styles.label}>
-          Scheduled arrival
-          <input style={styles.input} type="datetime-local" value={form.scheduled_arrival}
-            onChange={(e) => setForm({ ...form, scheduled_arrival: e.target.value })} required />
+          Base fare (₹)
+          <input
+            style={styles.input}
+            type="number"
+            min="1"
+            max="500000"
+            step="1"
+            value={form.base_fare_rupees}
+            onChange={(e) => setForm({ ...form, base_fare_rupees: e.target.value })}
+            placeholder="e.g. 4500"
+            required
+          />
         </label>
         <label style={{ ...styles.label, flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
           <input type="checkbox" checked={autoAssign} onChange={(e) => setAutoAssign(e.target.checked)} />
@@ -325,7 +394,7 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
             <ul>
               {conflicts.map((c) => (
                 <li key={c.id} style={styles.muted}>
-                  {c.flight_number} — departs {new Date(c.scheduled_departure).toLocaleString()}
+                  {c.flight_number} — departs {formatDateTime(c.scheduled_departure)}
                 </li>
               ))}
             </ul>
@@ -340,8 +409,8 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
         <thead>
           <tr>
             <th style={styles.th}>Flight</th><th style={styles.th}>Route</th>
-            <th style={styles.th}>Departs</th><th style={styles.th}>Gate</th>
-            <th style={styles.th}>Status</th><th style={styles.th}></th>
+            <th style={styles.th}>Departs</th><th style={styles.th}>Base Fare</th><th style={styles.th}>Gate</th>
+            <th style={styles.th}>Tail #</th><th style={styles.th}>Status</th><th style={styles.th}></th>
           </tr>
         </thead>
         <tbody>
@@ -349,8 +418,10 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
             <tr key={f.id}>
               <td style={styles.td}>{f.flight_number}</td>
               <td style={styles.td}>{f.origin_code} → {f.dest_code}</td>
-              <td style={styles.td}>{new Date(f.scheduled_departure).toLocaleString()}</td>
+              <td style={styles.td}>{formatDateTime(f.scheduled_departure)}</td>
+              <td style={styles.td}>{formatINR(f.base_price_cents)}</td>
               <td style={styles.td}>{f.gate_code || '—'}</td>
+              <td style={styles.td}>{f.tail_number || '—'}</td>
               <td style={styles.td}>{f.status}</td>
               <td style={styles.td}>
                 <button style={styles.buttonSecondary} onClick={() => viewFlight(f.id)}>Details</button>
@@ -363,6 +434,37 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
       {selectedFlightId && selectedDetail && (
         <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
           <h3 style={styles.cardTitle}>Turnaround checklist — {selectedDetail.flight.flight_number}</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <span style={styles.muted}>Tail #:</span>
+            {editingTailNumber !== null ? (
+              <>
+                <input
+                  style={{ ...styles.input, width: '140px' }}
+                  value={editingTailNumber}
+                  onChange={(e) => setEditingTailNumber(e.target.value.toUpperCase())}
+                  placeholder="VT-ABC"
+                  maxLength={20}
+                />
+                <button style={styles.button} type="button" onClick={() => saveTailNumber(selectedDetail.flight.id)}>
+                  Save
+                </button>
+                <button style={styles.buttonSecondary} type="button" onClick={() => setEditingTailNumber(null)}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <strong>{selectedDetail.flight.tail_number || '—'}</strong>
+                <button
+                  style={styles.buttonSecondary}
+                  type="button"
+                  onClick={() => setEditingTailNumber(selectedDetail.flight.tail_number || '')}
+                >
+                  Edit tail #
+                </button>
+              </>
+            )}
+          </div>
           <table style={styles.table}>
             <thead>
               <tr>
@@ -394,37 +496,76 @@ export function FlightManager({ token, airports, aircraftTypes, gates }) {
 // ---------------------------------------------------------------------
 export function ResourceManager({ token, airports }) {
   const [resources, setResources] = useState([]);
+  const [flights, setFlights] = useState([]);
   const [assignments, setAssignments] = useState([]);
+
   const [resourceForm, setResourceForm] = useState({ airport_id: '', type: 'fuel_truck' });
+  const [resourceTouched, setResourceTouched] = useState({});
+  const [resourceServerError, setResourceServerError] = useState(null);
+  const [addingResource, setAddingResource] = useState(false);
+
   const [assignForm, setAssignForm] = useState({ resource_id: '', flight_id: '', start_time: '', end_time: '' });
-  const [error, setError] = useState(null);
+  const [assignTouched, setAssignTouched] = useState({});
+  const [assignServerError, setAssignServerError] = useState(null);
+  const [assigningResource, setAssigningResource] = useState(false);
   const [conflicts, setConflicts] = useState([]);
 
   const loadResources = useCallback(() => {
-    apiFetch('/resources', { token }).then((d) => setResources(d.resources)).catch((err) => setError(err.message));
+    apiFetch('/resources', { token })
+      .then((d) => setResources(d.resources || []))
+      .catch((err) => setResourceServerError(err.message));
   }, [token]);
 
-  useEffect(() => { loadResources(); }, [loadResources]);
+  const loadFlights = useCallback(() => {
+    apiFetch('/flights?limit=200', { token })
+      .then((d) => setFlights(d.flights || []))
+      .catch(() => { });
+  }, [token]);
+
+  useEffect(() => {
+    loadResources();
+    loadFlights();
+  }, [loadResources, loadFlights]);
+
+  const assignValidation = validateResourceAssignmentForm(assignForm);
+  const resourceValidation = validateAddResourceForm(resourceForm);
+  const assignableFlights = flights.filter((f) => isFlightAssignable(f));
 
   async function addResource(e) {
     e.preventDefault();
-    setError(null);
+    setResourceServerError(null);
+    setResourceTouched({ airport_id: true, type: true });
+    if (!resourceValidation.isValid) return;
+
+    setAddingResource(true);
     try {
       await apiFetch('/resources', {
-        method: 'POST', token,
+        method: 'POST',
+        token,
         body: { ...resourceForm, airport_id: Number(resourceForm.airport_id) },
       });
       loadResources();
-    } catch (err) { setError(err.message); }
+      setResourceForm({ airport_id: '', type: 'fuel_truck' });
+      setResourceTouched({});
+    } catch (err) {
+      setResourceServerError(err.message || 'Could not create resource');
+    } finally {
+      setAddingResource(false);
+    }
   }
 
   async function assignResource(e) {
     e.preventDefault();
-    setError(null);
+    setAssignServerError(null);
     setConflicts([]);
+    setAssignTouched({ resource_id: true, flight_id: true, start_time: true, end_time: true });
+    if (!assignValidation.isValid) return;
+
+    setAssigningResource(true);
     try {
       const result = await apiFetch('/resource-assignments', {
-        method: 'POST', token,
+        method: 'POST',
+        token,
         body: {
           resource_id: Number(assignForm.resource_id),
           flight_id: Number(assignForm.flight_id),
@@ -433,10 +574,15 @@ export function ResourceManager({ token, airports }) {
         },
       });
       setAssignments((prev) => [...prev, result.resource_assignment]);
-      setAssignForm({ ...assignForm, flight_id: '', start_time: '', end_time: '' });
+      setAssignForm({ resource_id: '', flight_id: '', start_time: '', end_time: '' });
+      setAssignTouched({});
     } catch (err) {
-      setError(err.message);
-      if (err.status === 409 && err.detail?.conflicts) setConflicts(err.detail.conflicts);
+      setAssignServerError(err.message || 'Could not create resource assignment');
+      if (err.status === 409 && err.detail?.conflicts) {
+        setConflicts(err.detail.conflicts);
+      }
+    } finally {
+      setAssigningResource(false);
     }
   }
 
@@ -444,57 +590,237 @@ export function ResourceManager({ token, airports }) {
     <div style={styles.card}>
       <h2 style={styles.cardTitle}>Resources (fuel trucks, baggage carts, crew)</h2>
       <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+        {/* Add Resource Form */}
         <form style={styles.form} onSubmit={addResource}>
           <strong>Add resource</strong>
-          <select style={styles.select} value={resourceForm.airport_id}
-            onChange={(e) => setResourceForm({ ...resourceForm, airport_id: e.target.value })} required>
-            <option value="" disabled>Airport</option>
-            {airports.map((a) => <option key={a.id} value={a.id}>{a.code}</option>)}
-          </select>
-          <select style={styles.select} value={resourceForm.type}
-            onChange={(e) => setResourceForm({ ...resourceForm, type: e.target.value })}>
-            {['fuel_truck', 'baggage_cart', 'crew', 'catering_truck', 'pushback_tug'].map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-          <button style={styles.button} type="submit">Add resource</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <select
+              style={styles.select}
+              value={resourceForm.airport_id}
+              onChange={(e) => {
+                setResourceForm({ ...resourceForm, airport_id: e.target.value });
+                setResourceTouched((prev) => ({ ...prev, airport_id: true }));
+              }}
+              onBlur={() => setResourceTouched((prev) => ({ ...prev, airport_id: true }))}
+            >
+              <option value="" disabled>Select airport...</option>
+              {airports.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} ({a.city || a.name})
+                </option>
+              ))}
+            </select>
+            {resourceTouched.airport_id && resourceValidation.errors.airport_id && (
+              <span style={{ color: 'var(--color-error)', fontSize: '11px' }}>
+                {resourceValidation.errors.airport_id}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <select
+              style={styles.select}
+              value={resourceForm.type}
+              onChange={(e) => {
+                setResourceForm({ ...resourceForm, type: e.target.value });
+                setResourceTouched((prev) => ({ ...prev, type: true }));
+              }}
+            >
+              {ALLOWED_RESOURCE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t.replace('_', ' ')}
+                </option>
+              ))}
+            </select>
+            {resourceTouched.type && resourceValidation.errors.type && (
+              <span style={{ color: 'var(--color-error)', fontSize: '11px' }}>
+                {resourceValidation.errors.type}
+              </span>
+            )}
+          </div>
+
+          <button
+            style={styles.button}
+            type="submit"
+            disabled={!resourceValidation.isValid || addingResource}
+          >
+            {addingResource ? 'Adding...' : 'Add resource'}
+          </button>
+
+          {resourceServerError && (
+            <p style={{ color: 'var(--color-error)', fontSize: '12.5px', margin: '4px 0' }}>
+              {resourceServerError}
+            </p>
+          )}
         </form>
 
+        {/* Assign Resource Form */}
         <form style={styles.form} onSubmit={assignResource}>
-          <strong>Assign to flight (by flight id)</strong>
-          <select style={styles.select} value={assignForm.resource_id}
-            onChange={(e) => setAssignForm({ ...assignForm, resource_id: e.target.value })} required>
-            <option value="" disabled>Resource</option>
-            {resources.map((r) => <option key={r.id} value={r.id}>#{r.id} {r.type} ({r.status})</option>)}
-          </select>
-          <input style={styles.input} type="number" placeholder="Flight ID" value={assignForm.flight_id}
-            onChange={(e) => setAssignForm({ ...assignForm, flight_id: e.target.value })} required />
-          <input style={styles.input} type="datetime-local" value={assignForm.start_time}
-            onChange={(e) => setAssignForm({ ...assignForm, start_time: e.target.value })} required />
-          <input style={styles.input} type="datetime-local" value={assignForm.end_time}
-            onChange={(e) => setAssignForm({ ...assignForm, end_time: e.target.value })} required />
-          <button style={styles.button} type="submit">Assign</button>
+          <strong>Assign to flight</strong>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <label style={styles.label}>
+              Resource
+              <select
+                style={styles.select}
+                value={assignForm.resource_id}
+                onChange={(e) => {
+                  setAssignForm({ ...assignForm, resource_id: e.target.value });
+                  setAssignTouched((prev) => ({ ...prev, resource_id: true }));
+                }}
+                onBlur={() => setAssignTouched((prev) => ({ ...prev, resource_id: true }))}
+              >
+                <option value="" disabled>Select resource...</option>
+                {resources.map((r) => (
+                  <option key={r.id} value={r.id} disabled={r.status === 'maintenance'}>
+                    {formatResourceOption(r, airports)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {assignTouched.resource_id && assignValidation.errors.resource_id && (
+              <span style={{ color: 'var(--color-error)', fontSize: '11px' }}>
+                {assignValidation.errors.resource_id}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <label style={styles.label}>
+              Flight
+              <select
+                style={styles.select}
+                value={assignForm.flight_id}
+                onChange={(e) => {
+                  setAssignForm({ ...assignForm, flight_id: e.target.value });
+                  setAssignTouched((prev) => ({ ...prev, flight_id: true }));
+                }}
+                onBlur={() => setAssignTouched((prev) => ({ ...prev, flight_id: true }))}
+              >
+                <option value="" disabled>Select assignable flight...</option>
+                {assignableFlights.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {formatFlightOption(f, formatDateTime)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {assignTouched.flight_id && assignValidation.errors.flight_id && (
+              <span style={{ color: 'var(--color-error)', fontSize: '11px' }}>
+                {assignValidation.errors.flight_id}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <DateTimePicker
+              label="Start time"
+              value={assignForm.start_time}
+              onChange={(val) => {
+                setAssignForm({ ...assignForm, start_time: val });
+                setAssignTouched((prev) => ({ ...prev, start_time: true }));
+              }}
+              required
+            />
+            {assignTouched.start_time && assignValidation.errors.start_time && (
+              <span style={{ color: 'var(--color-error)', fontSize: '11px' }}>
+                {assignValidation.errors.start_time}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <DateTimePicker
+              label="End time"
+              value={assignForm.end_time}
+              onChange={(val) => {
+                setAssignForm({ ...assignForm, end_time: val });
+                setAssignTouched((prev) => ({ ...prev, end_time: true }));
+              }}
+              required
+            />
+            {assignTouched.end_time && assignValidation.errors.end_time && (
+              <span style={{ color: 'var(--color-error)', fontSize: '11px' }}>
+                {assignValidation.errors.end_time}
+              </span>
+            )}
+          </div>
+
+          <button
+            style={styles.button}
+            type="submit"
+            disabled={!assignValidation.isValid || assigningResource}
+          >
+            {assigningResource ? 'Assigning...' : 'Assign'}
+          </button>
+
+          {assignServerError && (
+            <p style={{ color: 'var(--color-error)', fontSize: '12.5px', margin: '4px 0' }}>
+              {assignServerError}
+            </p>
+          )}
+
+          {conflicts.length > 0 && (
+            <div style={{ marginTop: '4px' }}>
+              <p style={{ color: 'var(--color-error)', fontSize: '12px', margin: '2px 0', fontWeight: 600 }}>
+                This resource is already booked then:
+              </p>
+              <ul style={{ margin: 0, paddingLeft: '18px', color: 'var(--color-slate)', fontSize: '11.5px' }}>
+                {conflicts.map((c) => (
+                  <li key={c.id}>
+                    Flight #{c.flight_id}: {formatDateTime(c.start_time)} – {formatDateTime(c.end_time)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </form>
       </div>
-      {error && <p style={styles.error}>{error}</p>}
-      {conflicts.length > 0 && (
-        <div>
-          <p style={styles.error}>This resource is already booked then:</p>
-          <ul>
-            {conflicts.map((c) => (
-              <li key={c.id} style={styles.muted}>
-                Flight #{c.flight_id}: {new Date(c.start_time).toLocaleString()} – {new Date(c.end_time).toLocaleString()}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+
       <table style={styles.table}>
-        <thead><tr><th style={styles.th}>ID</th><th style={styles.th}>Type</th><th style={styles.th}>Status</th></tr></thead>
+        <thead>
+          <tr>
+            <th style={styles.th}>ID</th>
+            <th style={styles.th}>Type</th>
+            <th style={styles.th}>Airport</th>
+            <th style={styles.th}>Status</th>
+          </tr>
+        </thead>
         <tbody>
-          {resources.map((r) => (
-            <tr key={r.id}><td style={styles.td}>{r.id}</td><td style={styles.td}>{r.type}</td><td style={styles.td}>{r.status}</td></tr>
-          ))}
+          {resources.map((r) => {
+            const ap = airports?.find((a) => a.id === r.airport_id);
+            return (
+              <tr key={r.id}>
+                <td style={styles.td}>#{r.id}</td>
+                <td style={styles.td}>{r.type.replace('_', ' ')}</td>
+                <td style={styles.td}>{ap ? `${ap.code} (${ap.city || ap.name})` : `#${r.airport_id}`}</td>
+                <td style={styles.td}>
+                  <span
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      background:
+                        r.status === 'available'
+                          ? 'var(--color-success-bg)'
+                          : r.status === 'in_use'
+                            ? 'var(--color-primary-fixed)'
+                            : 'var(--color-warn-bg)',
+                      color:
+                        r.status === 'available'
+                          ? 'var(--color-success-text)'
+                          : r.status === 'in_use'
+                            ? 'var(--color-primary)'
+                            : 'var(--color-warn-text)',
+                    }}
+                  >
+                    {r.status}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
