@@ -154,6 +154,10 @@ export default function BookFlight() {
         setError('This flight has already departed and is no longer available for booking. Please select an upcoming flight.');
       } else if (err.detail?.code === 'FLIGHT_CANCELLED' || err.message?.includes('cancelled')) {
         setError('This flight is cancelled and cannot be booked. Please select an upcoming flight.');
+      } else if (err.detail?.code === 'DUPLICATE_BOOKING' || err.detail?.code === 'TIME_CONFLICT') {
+        const flightNum = err.detail?.conflicting_flight_number;
+        const suffix = flightNum && !err.message?.includes(flightNum) ? ` (Conflicting flight: ${flightNum})` : '';
+        setError(`${err.message}${suffix}`);
       } else {
         setError(err.message);
       }
@@ -177,6 +181,10 @@ export default function BookFlight() {
     } catch (err) {
       if (err.detail?.code === 'FLIGHT_DEPARTED' || err.message?.includes('departed')) {
         setError('This flight departed while your seat was held and can no longer be confirmed. Please select an upcoming flight.');
+      } else if (err.detail?.code === 'DUPLICATE_BOOKING' || err.detail?.code === 'TIME_CONFLICT') {
+        const flightNum = err.detail?.conflicting_flight_number;
+        const suffix = flightNum && !err.message?.includes(flightNum) ? ` (Conflicting flight: ${flightNum})` : '';
+        setError(`${err.message}${suffix}`);
       } else {
         setError(err.message);
       }
@@ -233,6 +241,7 @@ export default function BookFlight() {
 
         {error && (
           <div
+            role="alert"
             style={{
               display: 'flex',
               alignItems: 'center',

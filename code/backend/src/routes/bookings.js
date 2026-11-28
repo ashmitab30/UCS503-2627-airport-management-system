@@ -160,7 +160,13 @@ bookingsRouter.post(
       });
 
       if (!result.ok) {
-        return res.status(result.status).json({ error: result.error, code: result.code });
+        return res.status(result.status).json({
+          error: result.error,
+          code: result.code,
+          ...(result.conflicting_flight_number
+            ? { conflicting_flight_number: result.conflicting_flight_number }
+            : {}),
+        });
       }
 
       const io = getIo(req);
@@ -204,7 +210,13 @@ bookingsRouter.post(
       });
 
       if (!result.ok) {
-        return res.status(result.status).json({ error: result.error, code: result.code });
+        return res.status(result.status).json({
+          error: result.error,
+          code: result.code,
+          ...(result.conflicting_flight_number
+            ? { conflicting_flight_number: result.conflicting_flight_number }
+            : {}),
+        });
       }
 
       const io = getIo(req);
@@ -246,7 +258,13 @@ bookingsRouter.post(
       });
 
       if (!result.ok) {
-        return res.status(result.status).json({ error: result.error, code: result.code });
+        return res.status(result.status).json({
+          error: result.error,
+          code: result.code,
+          ...(result.conflicting_flight_number
+            ? { conflicting_flight_number: result.conflicting_flight_number }
+            : {}),
+        });
       }
 
       const io = getIo(req);
